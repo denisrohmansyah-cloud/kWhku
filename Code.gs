@@ -37,9 +37,15 @@ const SHEETS = {
 };
 
 function doGet(e) {
-  // Frontend di-host di GitHub Pages; Apps Script hanya sebagai API JSON.
-  let configured=true; try{assertConfigured_();}catch(err){configured=false;}
-  return json_({ok:true, service:'kWh-Ku API', configured:configured, time:new Date().toISOString()});
+  // Frontend dan backend berjalan dalam Apps Script; ESP32 tetap memakai doPost().
+  if (e && e.parameter && e.parameter.health === '1') {
+    let configured = true;
+    try { assertConfigured_(); } catch (err) { configured = false; }
+    return json_({ok:true, service:'kWh-Ku API', configured:configured, time:new Date().toISOString()});
+  }
+  return HtmlService.createTemplateFromFile('Index').evaluate()
+    .setTitle('kWh-Ku — Monitoring Listrik')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 function include(filename) {
