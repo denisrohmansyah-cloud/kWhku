@@ -37,19 +37,13 @@ const SHEETS = {
 };
 
 function doGet(e) {
-  // Frontend dan backend berjalan dalam Apps Script; ESP32 tetap memakai doPost().
+  // API-only endpoint. Website UI di-host terpisah melalui GitHub Pages.
   if (e && e.parameter && e.parameter.health === '1') {
     let configured = true;
     try { assertConfigured_(); } catch (err) { configured = false; }
     return json_({ok:true, service:'kWh-Ku API', configured:configured, time:new Date().toISOString()});
   }
-  return HtmlService.createTemplateFromFile('Index').evaluate()
-    .setTitle('kWh-Ku — Monitoring Listrik')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+  return json_({ok:true, service:'kWh-Ku API', message:'API aktif. Gunakan POST untuk permintaan dashboard dan data ESP32.'});
 }
 
 function setupKWhku() {
