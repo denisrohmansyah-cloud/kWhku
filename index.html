@@ -6,7 +6,7 @@
 <title>kWh-Ku — Sistem Monitoring Listrik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<?!= include('Styles'); ?>
 </head>
 <body>
 <div id="loginView" class="login-wrap">
@@ -81,8 +81,6 @@
   </main>
 </div>
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
-<script src="config.js"></script>
-<script src="demo.js"></script>
-<script src="app.js"></script>
+<?!= include('App'); ?>
 </body>
 </html>
