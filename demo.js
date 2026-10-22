@@ -22,7 +22,7 @@ window.DemoAPI=(()=>{
       return {ok:true,role:x.role,username:u,name:x.name,customerId:x.customerId,token}},
     getDashboard(s){const u=me(s);if(!u)return bad;const sel=u.role==='ADMIN'?C:C.filter(c=>c.customerId===u.customerId);
       const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);let dl=[];const out=sel.map(c=>{
-        const rs=R.filter(r=>r.customerId===c.customerId),L=rs[rs.length-1],mr=rs.filter(r=>new Date(r.timestamp)>=ms),e=mr.length?L.energyKwh-mr[0].energyKwh:0,d=daily(rs,c);dl=dl.concat(d);
+        const rs=R.filter(r=>r.customerId===c.customerId),L=rs[rs.length-1],mr=rs.filter(r=>new Date(r.timestamp)>=ms),before=rs.filter(r=>new Date(r.timestamp)<ms).slice(-1)[0],e=mr.length?Math.max(0,L.energyKwh-(before?before.energyKwh:mr[0].energyKwh)):0,d=daily(rs,c);dl=dl.concat(d);
         const l7=d.slice(-7),dc=l7.length?l7.reduce((a,x)=>a+x.costRp,0)/l7.length:0;
         return {...c,energyMonthKwh:+e.toFixed(3),costMonthRp:Math.round(e*c.tariffRpPerKwh),latest:L,online:true,estimatedDaysLeft:c.mode==='PRABAYAR'&&dc>0?+(c.tokenBalanceRp/dc).toFixed(1):null,dailyCostRp:Math.round(dc)}});
       return {ok:true,role:u.role,customers:out,readings:[],daily:dl,serverTime:new Date().toISOString()}},
