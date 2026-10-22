@@ -15,8 +15,8 @@
     <div class="visual-copy">
       <div class="eyebrow">Kontrol listrik, lebih mudah</div>
       <h1>Pahami pemakaian listrikmu, setiap saat.</h1>
-      <p>Pantau konsumsi energi, cek estimasi biaya rupiah, dan ketahui perkiraan sisa token listrik dalam satu dashboard yang praktis.</p>
-      <div class="energy-card"><small>Estimasi biaya bulan ini</small><strong>Rp 186.450</strong><small>Contoh data pemakaian · diperbarui secara berkala</small><div class="mini-bars"><i style="height:32%"></i><i style="height:53%"></i><i style="height:41%"></i><i style="height:70%"></i><i style="height:60%"></i><i style="height:85%"></i><i style="height:65%"></i><i style="height:100%"></i><i style="height:73%"></i><i style="height:88%"></i></div></div>
+      <p>Pantau konsumsi energi, daya listrik, dan estimasi tagihan bulanan pascabayar dalam satu dashboard yang praktis.</p>
+      <div class="energy-card"><small>Estimasi tagihan bulan ini</small><strong>Rp 186.450</strong><small>Contoh data pemakaian · diperbarui secara berkala</small><div class="mini-bars"><i style="height:32%"></i><i style="height:53%"></i><i style="height:41%"></i><i style="height:70%"></i><i style="height:60%"></i><i style="height:85%"></i><i style="height:65%"></i><i style="height:100%"></i><i style="height:73%"></i><i style="height:88%"></i></div></div>
     </div>
     <div class="visual-foot">© 2026 kWh-Ku · Sistem Monitoring Konsumsi Energi</div>
   </aside>
@@ -41,7 +41,7 @@
       <button data-page="calendar"><span class="ico">▣</span>Kalender Pemakaian</button>
       <button data-page="history"><span class="ico">↗</span>Riwayat Penggunaan</button>
       <button data-page="customers" class="admin-only hidden"><span class="ico">♙</span>Data Pelanggan</button>
-      <button data-page="tokens" class="admin-only hidden"><span class="ico">▤</span>Manajemen Token</button>
+      
     </nav>
     <div class="sidebar-bottom"><div class="profile"><div class="avatar" id="avatar">P</div><div><b id="profileName">Pelanggan</b><small id="profileRole">User Pelanggan</small></div><button class="logout" id="logout" title="Keluar">↪</button></div></div>
   </aside>
@@ -60,8 +60,8 @@
         <div class="panel"><div class="panel-head"><div><h3>Status penggunaan</h3><p>Informasi kondisi listrik saat ini</p></div><span class="badge" id="statusBadge">● Normal</span></div>
           <div class="usage-status"><div class="status-icon">⚡</div><div class="status-copy"><b>Status meter</b><small id="meterNote">Meter terhubung</small></div><div class="status-value positive" id="meterStatus">Aktif<small>Online</small></div></div>
           <div class="usage-status"><div class="status-icon">⌁</div><div class="status-copy"><b>Konsumsi hari ini</b><small>Akumulasi energi</small></div><div class="status-value" id="todayKwh">4,8 kWh<small>Hari ini</small></div></div>
-          <div class="usage-status"><div class="status-icon">◷</div><div class="status-copy"><b>Estimasi token habis</b><small>Berdasarkan rata-rata pemakaian</small></div><div class="status-value warning" id="tokenDate">15 Okt 2026<small>Perkiraan</small></div></div>
-          <div class="token-card"><div class="token-top"><span>🔋 Sisa saldo token</span><span id="tokenPercent">62%</span></div><div class="token-number" id="tokenBalance">Rp 93.000</div><div class="progress"><span id="tokenProgress"></span></div><div class="token-note"><span>Estimasi sisa saldo</span><span id="tokenUsed">Rp 57.000 terpakai</span></div></div>
+          <div class="usage-status"><div class="status-icon">◷</div><div class="status-copy"><b>Periode tagihan</b><small>Berdasarkan rata-rata pemakaian</small></div><div class="status-value warning" id="tokenDate">15 Okt 2026<small>Perkiraan</small></div></div>
+          <div class="token-card"><div class="token-top"><span>🔋 Tagihan berjalan</span><span id="tokenPercent">62%</span></div><div class="token-number" id="tokenBalance">Rp 93.000</div><div class="progress"><span id="tokenProgress"></span></div><div class="token-note"><span>Estimasi sisa saldo</span><span id="tokenUsed">Rp 57.000 terpakai</span></div></div>
         </div>
       </div>
       <div class="panel table-panel"><div class="panel-head"><div><h3 id="recentTitle">Riwayat penggunaan terbaru</h3><p>Ringkasan pemakaian dan estimasi biaya</p></div><button class="text-btn" data-goto="history">Lihat semua →</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Energi</th><th>Estimasi biaya</th><th>Status</th></tr></thead><tbody id="recentTable"></tbody></table></div></div>
@@ -74,9 +74,6 @@
     </section>
     <section id="page-customers" class="section">
       <div class="panel table-panel"><div class="panel-head"><div><h3>Daftar pelanggan</h3><p>Kelola pelanggan dan pantau ringkasan penggunaan mereka.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="printCustomers">🖨 Cetak rekap</button><button class="primary" id="addCustomer">＋ Tambah pelanggan</button></div></div><div class="filter-row" style="padding:0 20px;margin-top:18px"><input id="customerSearch" placeholder="Cari nama / ID pelanggan..." /></div><div class="table-wrap"><table><thead><tr><th>ID pelanggan</th><th>Nama pelanggan</th><th>Daya</th><th>Penggunaan bulan ini</th><th>Biaya berjalan</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="customerTable"></tbody></table></div></div>
-    </section>
-    <section id="page-tokens" class="section">
-      <div class="panel table-panel"><div class="panel-head"><div><h3>Manajemen token listrik</h3><p>Tambah saldo prabayar internal pelanggan. Ini bukan penerbitan token PLN resmi.</p></div><button class="primary" id="createToken">＋ Buat token</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal dibuat</th><th>ID pelanggan</th><th>Nama pelanggan</th><th>Nominal</th><th>Kode token</th><th>Catatan</th></tr></thead><tbody id="tokenTable"></tbody></table></div></div>
     </section>
   </main>
 </div>
