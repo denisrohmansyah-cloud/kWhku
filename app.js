@@ -41,8 +41,8 @@ $('logout').onclick=()=>{session=null;customers=[];daily=[];tokens=[];$('passwor
 $('mobileMenu').onclick=()=>$('sidebar').classList.toggle('open');
 
 // ---- Navigasi
-const titles={dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],customers:['Data Pelanggan','Kelola pelanggan terdaftar'],tokens:['Token Listrik','Buat dan lihat token pelanggan']};
-function showPage(p){if(['customers','tokens'].includes(p)&&!admin())p='dashboard';
+const titles={dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],customers:['Data Pelanggan','Kelola pelanggan terdaftar']};
+function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));$('page-'+p).classList.add('active');
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
@@ -54,7 +54,7 @@ document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dat
 async function refresh(){
   const res=await api('getDashboard',session);if(!res?.ok){if(/Sesi/.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
   customers=res.customers||[];daily=res.daily||[];
-  if(admin()){const t=await api('getTokens',session);tokens=t?.rows||[]}
+  tokens=[];
   renderAll()}
 
 // ---- Render
@@ -64,13 +64,13 @@ function renderAll(){if(!session)return;
   $('costStat').textContent=rp(c?c.costMonthRp:sum('costMonthRp'));$('kwhStat').textContent=fmt(c?c.energyMonthKwh:sum('energyMonthKwh'))+' kWh';
   $('powerStat').textContent=fmt(c?L?.powerW:customers.reduce((a,x)=>a+(Number(x.latest?.powerW)||0),0))+' W';
   const today=dk(new Date());$('todayKwh').innerHTML=fmt(rows().filter(r=>r.date===today).reduce((a,r)=>a+r.kwh,0))+' kWh<small>Hari ini</small>';
-  const days=c?.estimatedDaysLeft,pre=c?.mode==='PRABAYAR';
-  $('tokenStatLabel').innerHTML=(admin()?'Pelanggan aktif':'Estimasi token habis')+' <span class="stat-icon">▤</span>';
-  $('tokenStat').textContent=admin()?customers.length+' pelanggan':pre?(days==null?'—':fmt(days)+' hari'):'Pascabayar';
+  const days=c?.estimatedDaysLeft,pre=false;
+  $('tokenStatLabel').innerHTML=(admin()?'Pelanggan aktif':'Estimasi tagihan berjalan')+' <span class="stat-icon">▤</span>';
+  $('tokenStat').textContent=admin()?customers.length+' pelanggan':rp(c?.costMonthRp||0);
   if(days!=null){const d=new Date();d.setDate(d.getDate()+Math.floor(days));$('tokenDate').innerHTML=dText(d)+'<small>Perkiraan</small>'}else $('tokenDate').innerHTML='—<small>'+(admin()?'Semua pelanggan':pre?'Belum cukup data':'Pascabayar')+'</small>';
-  $('tokenBalance').textContent=c&&pre?rp(c.tokenBalanceRp):'—';$('tokenPercent').textContent=pre&&days!=null?fmt(days)+' hari':'';
-  $('tokenProgress').style.width=pre&&days!=null?Math.min(100,days/30*100)+'%':'0%';
-  $('tokenUsed').textContent=pre?'Rata-rata ±'+rp(c.dailyCostRp)+'/hari':admin()?'Ringkasan seluruh pelanggan':'Tagihan dihitung akhir bulan';
+  $('tokenBalance').textContent=c?rp(c.costMonthRp):'—';$('tokenPercent').textContent=c?'Bulan ini':'';
+  $('tokenProgress').style.width=c?'100%':'0%';
+  $('tokenUsed').textContent=admin()?'Ringkasan seluruh pelanggan':'Estimasi biaya bulan berjalan';
   const on=customers.filter(x=>x.online).length,heavy=L&&c.powerVa&&L.powerW>c.powerVa*.8;
   $('meterStatus').innerHTML=admin()?on+'/'+customers.length+'<small>Online</small>':(c?.online?'Aktif':'Offline')+'<small>'+(c?.online?'Online':'Data lama')+'</small>';
   $('meterNote').textContent=admin()?'Meter terhubung':'Meter '+(c?.meterId||'');
@@ -97,21 +97,20 @@ function renderCustomers(){if(!admin())return;const q=$('customerSearch').value.
   $('customerTable').innerHTML=customers.filter(c=>(c.customerId+' '+c.name).toLowerCase().includes(q)).map(c=>`<tr><td><b>${esc(c.customerId)}</b></td><td>${esc(c.name)}</td><td>${fmt(c.powerVa)} VA</td><td>${fmt(c.energyMonthKwh)} kWh</td><td>${rp(c.costMonthRp)}</td><td><span class="badge ${c.online?'':'amber'}">${c.online?'Online':'Offline'}</span></td><td><button class="small-btn" data-view="${esc(c.customerId)}">Lihat riwayat</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">Belum ada pelanggan.</td></tr>'}
 $('customerSearch').oninput=renderCustomers;
 $('customerTable').onclick=e=>{const id=e.target.dataset.view;if(!id)return;showPage('history');selId=id;$('historySearch').value=id;renderAll();toast('Riwayat '+cust(id).name)};
-function renderTokens(){if(!admin())return;$('tokenTable').innerHTML=tokens.map(t=>`<tr><td>${new Date(t.createdAt).toLocaleString('id-ID')}</td><td><b>${esc(t.customerId)}</b></td><td>${esc(t.name)}</td><td>${rp(t.amountRp)}</td><td class="code">${esc(t.tokenCode||'—')}</td><td>${esc(t.note)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Belum ada token dibuat.</td></tr>'}
+function renderTokens(){}
 
 // ---- Modal admin
 function modal(html){$('modalRoot').innerHTML=`<div class="modal-backdrop" id="bd"><div class="modal">${html}</div></div>`;$('bd').onclick=e=>{if(e.target.id==='bd')$('modalRoot').innerHTML=''}}
-function openModal(type){const tk=type==='token',pre=customers.filter(c=>c.mode==='PRABAYAR');
-  if(tk&&!pre.length)return toast('Belum ada pelanggan prabayar.');
-  modal(`<h2>${tk?'Buat token listrik':'Tambah pelanggan'}</h2><p>${tk?'Saldo & kode token internal (bukan token PLN resmi).':'Data disimpan ke Google Sheets.'}</p><form id="mf">${tk?`<div class="field"><label>Pelanggan prabayar</label><select id="mc">${pre.map(c=>`<option value="${esc(c.customerId)}">${esc(c.customerId)} — ${esc(c.name)}</option>`).join('')}</select></div><div class="field"><label>Nominal</label><select id="ma"><option value="20000">Rp 20.000</option><option value="50000" selected>Rp 50.000</option><option value="100000">Rp 100.000</option><option value="200000">Rp 200.000</option></select></div><div class="field"><label>Catatan</label><input id="mn" placeholder="Contoh: pembelian token"></div>`:`<div class="field"><label>ID pelanggan</label><input id="mi" required placeholder="PLG-004"></div><div class="field"><label>Nama</label><input id="mnm" required></div><div class="field"><label>ID meter ESP32</label><input id="mm" required placeholder="ESP32-004"></div><div class="field"><label>Mode</label><select id="mmo"><option value="PRABAYAR">Prabayar</option><option value="PASCABAYAR">Pascabayar</option></select></div><div class="field"><label>Daya</label><select id="mp"><option>900</option><option selected>1300</option><option>2200</option><option>3500</option></select></div><div class="field"><label>Tarif (Rp/kWh)</label><input id="mt" type="number" min="1" value="1500" required></div>`}<div class="modal-actions"><button type="button" class="secondary" id="cm">Batal</button><button class="primary">${tk?'Buat token':'Simpan'}</button></div></form>`);
+function openModal(type){const tk=false;
+  modal(`<h2>${tk?'Buat token listrik':'Tambah pelanggan'}</h2><p>${tk?'Saldo & kode token internal (bukan token PLN resmi).':'Data disimpan ke Google Sheets.'}</p><form id="mf">${tk?`<div class="field"><label>Pelanggan prabayar</label><select id="mc">${pre.map(c=>`<option value="${esc(c.customerId)}">${esc(c.customerId)} — ${esc(c.name)}</option>`).join('')}</select></div><div class="field"><label>Nominal</label><select id="ma"><option value="20000">Rp 20.000</option><option value="50000" selected>Rp 50.000</option><option value="100000">Rp 100.000</option><option value="200000">Rp 200.000</option></select></div><div class="field"><label>Catatan</label><input id="mn" placeholder="Contoh: pembelian token"></div>`:`<div class="field"><label>ID pelanggan</label><input id="mi" required placeholder="PLG-004"></div><div class="field"><label>Nama</label><input id="mnm" required></div><div class="field"><label>ID meter ESP32</label><input id="mm" required placeholder="ESP32-004"></div><input type="hidden" id="mmo" value="PASCABAYAR"><div class="field"><label>Mode layanan</label><input value="Pascabayar" disabled></div><div class="field"><label>Daya</label><select id="mp"><option>900</option><option selected>1300</option><option>2200</option><option>3500</option></select></div><div class="field"><label>Tarif (Rp/kWh)</label><input id="mt" type="number" min="1" value="1500" required></div>`}<div class="modal-actions"><button type="button" class="secondary" id="cm">Batal</button><button class="primary">${tk?'Buat token':'Simpan'}</button></div></form>`);
   $('cm').onclick=()=>$('modalRoot').innerHTML='';
   $('mf').onsubmit=async e=>{e.preventDefault();try{
-    const res=tk?await api('adminAddTokenBalance',session,$('mc').value,Number($('ma').value),$('mn').value):await api('adminCreateCustomer',session,{customerId:$('mi').value,name:$('mnm').value,meterId:$('mm').value,mode:$('mmo').value,tariffRpPerKwh:Number($('mt').value),powerVa:Number($('mp').value),tokenBalanceRp:0});
+    const res=await api('adminCreateCustomer',session,{customerId:$('mi').value,name:$('mnm').value,meterId:$('mm').value,mode:'PASCABAYAR',tariffRpPerKwh:Number($('mt').value),powerVa:Number($('mp').value),tokenBalanceRp:0});
     if(!res?.ok)return toast(res?.message||'Gagal');
     modal(tk?`<h2>Token berhasil dibuat</h2><p>Kode token:</p><p class="code" style="font-size:20px">${esc(res.tokenCode)}</p><p>Saldo baru: <b>${rp(res.balanceRp)}</b></p><div class="modal-actions"><button class="primary" id="ok">Selesai</button></div>`:`<h2>Pelanggan ditambahkan</h2><p>ID: <b>${esc(res.customerId)}</b></p><p>PIN sementara: <b>${esc(res.temporaryPin)}</b></p><p class="sub">Bagikan hanya kepada pelanggan terkait.</p><div class="modal-actions"><button class="primary" id="ok">Selesai</button></div>`);
     $('ok').onclick=()=>$('modalRoot').innerHTML='';await refresh();
   }catch(err){toast('Gagal: '+(err.message||err))}}}
-$('createToken').onclick=()=>openModal('token');$('addCustomer').onclick=()=>openModal('customer');
+$('addCustomer').onclick=()=>openModal('customer');
 
 // ---- Cetak rekap & CSV
 function printRecap(){const cs=admin()?customers:customers.filter(c=>c.customerId===session.customerId);
