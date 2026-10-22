@@ -2,8 +2,8 @@
 window.DemoAPI=(()=>{
   let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
   const pad=n=>String(n).padStart(2,'0'),dk=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-  const C=[['PLG-001','Budi Santoso','PASCABAYAR',1300,100000],['PLG-002','Siti Aminah','PASCABAYAR',2200,0],['PLG-003','Agus Pratama','PASCABAYAR',900,50000]]
-    .map((a,i)=>({customerId:a[0],name:a[1],meterId:'ESP32-00'+(i+1),mode:a[2],tariffRpPerKwh:1500,powerVa:a[3],tokenBalanceRp:a[4],active:true}));
+  const C=[['PLG-001','Pelanggan Demo 900 VA Subsidi','PASCABAYAR',900,0,605],['PLG-002','Pelanggan Demo 2200 VA','PASCABAYAR',2200,0,1444.70],['PLG-003','Pelanggan Demo 900 VA RTM','PASCABAYAR',900,0,1352]]
+    .map((a,i)=>({customerId:a[0],name:a[1],meterId:'ESP32-00'+(i+1),mode:a[2],tariffRpPerKwh:a[5],powerVa:a[3],tokenBalanceRp:a[4],active:true}));
   const U={admin:{pin:'admin123',role:'ADMIN',name:'Administrator',customerId:''}};
   C.forEach(c=>U[c.customerId]={pin:'123456',role:'PELANGGAN',name:c.name,customerId:c.customerId});
   const R=[],end=Date.now(),sess={};
