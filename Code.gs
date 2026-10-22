@@ -70,9 +70,9 @@ function seedDemoRows_() {
   if (sh.getLastRow() > 1) return;
   const now = new Date();
   sh.getRange(2,1,3,10).setValues([
-    ['PLG-001','Pelanggan Demo 1','ESP32-001','PRABAYAR',CONFIG.DEFAULT_TARIFF_RP_PER_KWH,1300,100000,200000,true,now],
-    ['PLG-002','Pelanggan Demo 2','ESP32-002','PASCABAYAR',CONFIG.DEFAULT_TARIFF_RP_PER_KWH,2200,0,250000,true,now],
-    ['PLG-003','Pelanggan Demo 3','ESP32-003','PRABAYAR',CONFIG.DEFAULT_TARIFF_RP_PER_KWH,900,50000,150000,true,now]
+    ['PLG-001','Pelanggan Demo 900 VA Subsidi','ESP32-001','PASCABAYAR',605,900,0,200000,true,now],
+    ['PLG-002','Pelanggan Demo 2200 VA','ESP32-002','PASCABAYAR',1444.70,2200,0,250000,true,now],
+    ['PLG-003','Pelanggan Demo 900 VA RTM','ESP32-003','PASCABAYAR',1352,900,0,150000,true,now]
   ]);
   const users = ss.getSheetByName('Users');
   if (users.getLastRow() === 1) {
