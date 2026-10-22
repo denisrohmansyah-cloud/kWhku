@@ -252,11 +252,21 @@ function hashPin_(pin) {
 
 function createSession_(user) {
   const token = Utilities.getUuid() + Utilities.getUuid();
-  const safeUser = {role:user.role, username:user.username, name:user.name, customerId:user.customerId || '', token:token};
-  CacheService.getScriptCache().put('kwhku_session_' + token, JSON.stringify({
-    username:user.username, role:user.role, customerId:user.customerId || ''
-  }), 21600); // 6 jam
-  return Object.assign({ok:true}, safeUser);
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+  const key = 'kwhku_session_' + token;
+  const sessionData = {username:user.username, role:user.role, customerId:user.customerId || '', expiresAt:expiresAt};
+  const props = PropertiesService.getScriptProperties();
+  const all = props.getProperties();
+  Object.keys(all).forEach(k => {
+    if (k.indexOf('kwhku_session_') !== 0) return;
+    try {
+      const old = JSON.parse(all[k]);
+      if (!old.expiresAt || Number(old.expiresAt) <= Date.now()) props.deleteProperty(k);
+    } catch (_) { props.deleteProperty(k); }
+  });
+  props.setProperty(key, JSON.stringify(sessionData));
+  CacheService.getScriptCache().put(key, JSON.stringify(sessionData), 21600);
+  return {ok:true, role:user.role, username:user.username, name:user.name, customerId:user.customerId || '', token:token, expiresAt:expiresAt};
 }
 
 function login(username, pin) {
@@ -267,19 +277,37 @@ function login(username, pin) {
 function validateSession_(session) {
   const token = String(session && session.token || '');
   if (!token || token.length < 30) return {ok:false,message:'Sesi tidak valid. Silakan masuk kembali.'};
-  const cached = CacheService.getScriptCache().get('kwhku_session_' + token);
-  if (!cached) return {ok:false,message:'Sesi berakhir. Silakan masuk kembali.'};
-  const s = JSON.parse(cached);
+  const key = 'kwhku_session_' + token;
+  const cache = CacheService.getScriptCache();
+  const props = PropertiesService.getScriptProperties();
+  let raw = cache.get(key);
+  let s = raw ? JSON.parse(raw) : null;
+  if (!s) { raw = props.getProperty(key); s = raw ? JSON.parse(raw) : null; }
+  if (!s) return {ok:false,message:'Sesi berakhir. Silakan masuk kembali.'};
+  if (!s.expiresAt || Number(s.expiresAt) <= Date.now()) {
+    cache.remove(key); props.deleteProperty(key);
+    return {ok:false,message:'Sesi berakhir. Silakan masuk kembali.'};
+  }
   const u = getRows_('Users').find(r =>
     String(r.username) === String(s.username) &&
     String(r.role).toUpperCase() === String(s.role).toUpperCase() &&
     truthy_(r.active)
   );
-  if (!u) return {ok:false,message:'Akun tidak aktif atau sesi tidak valid.'};
-  if (String(u.role).toUpperCase() === 'ADMIN') {
-    return {ok:true,role:'ADMIN',username:u.username,customerId:''};
+  if (!u) {
+    cache.remove(key); props.deleteProperty(key);
+    return {ok:false,message:'Akun tidak aktif atau sesi tidak valid.'};
   }
+  if (String(u.role).toUpperCase() === 'ADMIN') return {ok:true,role:'ADMIN',username:u.username,customerId:''};
   return {ok:true,role:'PELANGGAN',username:u.username,customerId:String(u.customerId)};
+}
+function logoutSession(session) {
+  const token = String(session && session.token || '');
+  if (token && token.length >= 30) {
+    const key = 'kwhku_session_' + token;
+    CacheService.getScriptCache().remove(key);
+    PropertiesService.getScriptProperties().deleteProperty(key);
+  }
+  return {ok:true};
 }
 function getRows_(key) {
   const entry=SHEETS[key]||Object.values(SHEETS).find(x=>x[0]===key);
@@ -315,6 +343,7 @@ function handleApi_(body){
   try{
     switch(body.fn){
       case 'login': return apiLogin_(a[0],a[1]);
+      case 'logout': return logoutSession(a[0]);
       case 'getDashboard': return getDashboard(a[0]);
       case 'getHistory': return getHistory(a[0],a[1],a[2]);
       case 'getTokens': return getTokens(a[0]);
