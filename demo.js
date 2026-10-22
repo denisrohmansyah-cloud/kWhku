@@ -2,7 +2,7 @@
 window.DemoAPI=(()=>{
   let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
   const pad=n=>String(n).padStart(2,'0'),dk=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-  const C=[['PLG-001','Budi Santoso','PRABAYAR',1300,100000],['PLG-002','Siti Aminah','PASCABAYAR',2200,0],['PLG-003','Agus Pratama','PRABAYAR',900,50000]]
+  const C=[['PLG-001','Budi Santoso','PASCABAYAR',1300,100000],['PLG-002','Siti Aminah','PASCABAYAR',2200,0],['PLG-003','Agus Pratama','PASCABAYAR',900,50000]]
     .map((a,i)=>({customerId:a[0],name:a[1],meterId:'ESP32-00'+(i+1),mode:a[2],tariffRpPerKwh:1500,powerVa:a[3],tokenBalanceRp:a[4],active:true}));
   const U={admin:{pin:'admin123',role:'ADMIN',name:'Administrator',customerId:''}};
   C.forEach(c=>U[c.customerId]={pin:'123456',role:'PELANGGAN',name:c.name,customerId:c.customerId});
@@ -24,7 +24,7 @@ window.DemoAPI=(()=>{
       const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);let dl=[];const out=sel.map(c=>{
         const rs=R.filter(r=>r.customerId===c.customerId),L=rs[rs.length-1],mr=rs.filter(r=>new Date(r.timestamp)>=ms),e=mr.length?L.energyKwh-mr[0].energyKwh:0,d=daily(rs,c);dl=dl.concat(d);
         const l7=d.slice(-7),dc=l7.length?l7.reduce((a,x)=>a+x.costRp,0)/l7.length:0;
-        return {...c,energyMonthKwh:+e.toFixed(3),costMonthRp:Math.round(e*c.tariffRpPerKwh),latest:L,online:true,estimatedDaysLeft:c.mode==='PRABAYAR'&&dc>0?+(c.tokenBalanceRp/dc).toFixed(1):null,dailyCostRp:Math.round(dc)}});
+        return {...c,energyMonthKwh:+e.toFixed(3),costMonthRp:Math.round(e*c.tariffRpPerKwh),latest:L,online:true,estimatedDaysLeft:c.mode==='PASCABAYAR'&&dc>0?+(c.tokenBalanceRp/dc).toFixed(1):null,dailyCostRp:Math.round(dc)}});
       return {ok:true,role:u.role,customers:out,readings:[],daily:dl,serverTime:new Date().toISOString()}},
     getTokens(s){const u=me(s);if(!u)return bad;return {ok:true,rows:TK.filter(t=>u.role==='ADMIN'||t.customerId===u.customerId).slice().reverse()}},
     adminCreateCustomer(s,p){const u=me(s);if(!u||u.role!=='ADMIN')return {ok:false,message:'Akses admin diperlukan.'};
@@ -33,7 +33,7 @@ window.DemoAPI=(()=>{
       const pin=String(Math.floor(1e5+rnd()*9e5));C.push({customerId:id,name:p.name,meterId:p.meterId,mode:p.mode,tariffRpPerKwh:p.tariffRpPerKwh,powerVa:p.powerVa,tokenBalanceRp:0,active:true});
       U[id]={pin,role:'PELANGGAN',name:p.name,customerId:id};return {ok:true,customerId:id,temporaryPin:pin,message:'Pelanggan dibuat (demo).'}},
     adminAddTokenBalance(s,id,amt,note){const u=me(s);if(!u||u.role!=='ADMIN')return {ok:false,message:'Akses admin diperlukan.'};
-      const c=C.find(x=>x.customerId===id);if(!c||c.mode!=='PRABAYAR')return {ok:false,message:'Pelanggan prabayar tidak ditemukan.'};
+      const c=C.find(x=>x.customerId===id);if(!c||c.mode!=='PASCABAYAR')return {ok:false,message:'Pelanggan prabayar tidak ditemukan.'};
       c.tokenBalanceRp+=Number(amt);const tc=code();TK.push({createdAt:new Date().toISOString(),customerId:id,name:c.name,amountRp:Number(amt),tokenCode:tc,note:note||'Penambahan saldo'});
       return {ok:true,balanceRp:c.tokenBalanceRp,tokenCode:tc,message:'Token dibuat (demo).'}}
   };
