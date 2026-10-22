@@ -6,6 +6,7 @@ const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'shor
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const dLabel=k=>dText(k+'T00:00:00');
 const CFG=window.KWHKU_CONFIG||{},DEMO=!CFG.API_URL;
+const SESSION_KEY='kwhku_session_v1',SESSION_TTL_MS=24*60*60*1000;
 let session=null,customers=[],daily=[],tokens=[],selId='',shown=new Date();shown.setDate(1);
 
 function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3500)}
@@ -25,19 +26,62 @@ const badge=r=>high(r)?'<span class="badge red">Tinggi</span>':'<span class="bad
 // ---- Login
 document.querySelectorAll('.role-btn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.role-btn').forEach(x=>x.classList.toggle('active',x===b));$('role').value=b.dataset.role});
 $('demoHint').innerHTML=DEMO?'<b>MODE DEMO</b> (data contoh).<br>Pelanggan: <b>PLG-001</b> / <b>123456</b><br>Admin: <b>admin</b> / <b>admin123</b>':'Masuk dengan akun yang terdaftar di Google Sheets.';
-$('liveText').textContent=DEMO?'MODE DEMO':'TERHUBUNG KE SHEETS';
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Memeriksa…';
-  try{const res=await api('login',$('username').value.trim(),$('password').value);
+$('liveText').textContent=DEMO?'MODE DEMO':'MEMERIKSA KONEKSI';
+function persistSession(s){
+  if(!s?.token)return s;
+  const saved={token:s.token,username:s.username||'',role:s.role||'',name:s.name||s.username||'Pengguna',customerId:s.customerId||'',expiresAt:Number(s.expiresAt)||Date.now()+SESSION_TTL_MS};
+  try{localStorage.setItem(SESSION_KEY,JSON.stringify(saved))}catch(err){console.warn('Sesi tidak dapat disimpan di browser',err)}
+  session=saved;return saved;
+}
+function clearClientSession(){
+  try{localStorage.removeItem(SESSION_KEY)}catch(_){}
+  session=null;customers=[];daily=[];tokens=[];selId='';
+  $('password').value='';
+  $('appView').classList.add('hidden');$('loginView').classList.remove('hidden');
+  document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.add('hidden'));
+  $('liveText').textContent=DEMO?'MODE DEMO':'API TIDAK TERHUBUNG';
+}
+function applySessionUI(user){
+  session=user;
+  $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
+  $('profileName').textContent=user.name||user.username||'Pengguna';
+  $('profileRole').textContent=admin()?'Administrator':'Pelanggan';
+  $('avatar').textContent=(user.name||user.username||'U').charAt(0).toUpperCase();
+  document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.toggle('hidden',!admin()));
+  $('welcomeTitle').textContent='Halo, '+(admin()?'Admin':(user.name||'Pelanggan').split(' ')[0])+'! 👋';
+  $('welcomeSub').textContent=admin()?'Pantau data listrik seluruh pelanggan.':'Berikut ringkasan penggunaan listrik Anda.';
+}
+$('loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Memeriksa…';
+  try{
+    const res=await api('login',$('username').value.trim(),$('password').value);
     if(!res?.ok){toast(res?.message||'Login gagal.');return}
     if(res.role!==($('role').value==='admin'?'ADMIN':'PELANGGAN')){toast('Pilihan role tidak sesuai dengan akun ini.');return}
-    session=res;selId='';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
-    $('profileName').textContent=res.name;$('profileRole').textContent=admin()?'Administrator':'Pelanggan';$('avatar').textContent=(res.name||'U')[0].toUpperCase();
-    document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.toggle('hidden',!admin()));
-    $('welcomeTitle').textContent='Halo, '+(admin()?'Admin':res.name.split(' ')[0])+'! 👋';
-    $('welcomeSub').textContent=admin()?'Pantau data listrik seluruh pelanggan.':'Berikut ringkasan penggunaan listrik Anda.';
-    await refresh();showPage('dashboard');
-  }catch(err){toast('Gagal terhubung: '+(err.message||err))}finally{btn.disabled=false;btn.innerHTML='Masuk ke Dashboard <span aria-hidden="true">→</span>'}});
-$('logout').onclick=()=>{session=null;customers=[];daily=[];tokens=[];$('password').value='';$('appView').classList.add('hidden');$('loginView').classList.remove('hidden')};
+    if(!res.token)throw Error('Server tidak mengembalikan token sesi.');
+    const user=persistSession({...res,expiresAt:res.expiresAt||Date.now()+SESSION_TTL_MS});
+    applySessionUI(user);await refresh();showPage('dashboard');
+  }catch(err){toast('Gagal terhubung: '+(err.message||err))}
+  finally{btn.disabled=false;btn.innerHTML='Masuk ke Dashboard <span aria-hidden="true">→</span>'}
+});
+$('logout').onclick=async()=>{
+  const old=session;clearClientSession();
+  if(old?.token&&!DEMO){try{await api('logout',old)}catch(err){console.warn('Logout server gagal',err)}}
+};
+async function restoreSavedSession(){
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem(SESSION_KEY)||'null')}catch(_){try{localStorage.removeItem(SESSION_KEY)}catch(__){}}
+  if(!saved?.token)return;
+  if(!Number(saved.expiresAt)||Date.now()>=Number(saved.expiresAt)){try{localStorage.removeItem(SESSION_KEY)}catch(_){}return}
+  session=saved;
+  try{
+    await refresh();if(!session)return;
+    applySessionUI(session);showPage('dashboard');
+  }catch(err){
+    if(!session)return;
+    applySessionUI(session);showPage('dashboard');
+    toast('Sesi tetap tersimpan, tetapi API belum dapat dihubungi. Data belum diperbarui.');
+  }
+}
 $('mobileMenu').onclick=()=>$('sidebar').classList.toggle('open');
 
 // ---- Navigasi
@@ -52,10 +96,19 @@ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dat
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
 async function refresh(){
-  const res=await api('getDashboard',session);if(!res?.ok){if(/Sesi/.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
-  customers=res.customers||[];daily=res.daily||[];
-  if(admin()){const t=await api('getTokens',session);tokens=t?.rows||[]}
-  renderAll()}
+  try{
+    const res=await api('getDashboard',session);
+    if(!res?.ok){
+      const message=res?.message||'Data gagal dimuat';
+      if(/sesi|token.*valid|berakhir/i.test(message)){clearClientSession();toast('Sesi berakhir. Silakan login kembali.')}
+      throw Error(message);
+    }
+    if(res.role)session={...session,role:res.role};
+    persistSession(session);customers=res.customers||[];daily=res.daily||[];
+    if(admin()){const t=await api('getTokens',session);tokens=t?.ok?(t.rows||[]):[]}
+    $('liveText').textContent=DEMO?'MODE DEMO':'TERHUBUNG KE SHEETS';renderAll();
+  }catch(err){$('liveText').textContent=DEMO?'MODE DEMO':'API TIDAK TERHUBUNG';throw err}
+}
 
 // ---- Render
 function renderAll(){if(!session)return;
@@ -123,4 +176,5 @@ $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...sorted().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV diunduh')};
-setInterval(()=>{if(session)refresh().catch(e=>console.warn(e))},CFG.REFRESH_MS||30000);
+restoreSavedSession();
+setInterval(()=>{if(session)refresh().catch(e=>console.warn(e))},CFG.REFRESH_MS||15000);
