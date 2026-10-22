@@ -53,7 +53,8 @@ document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dat
 
 async function refresh(){
   const res=await api('getDashboard',session);if(!res?.ok){if(/Sesi/.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
-  customers=res.customers||[];daily=res.daily||[];
+  customers=(res.customers||[]).filter(c=>String(c.mode||'').toUpperCase()==='PASCABAYAR');const allowed=new Set(customers.map(c=>c.customerId));daily=(res.daily||[]).filter(r=>allowed.has(r.customerId));
+  if(!admin()&&!customers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun ini bukan pelanggan pascabayar yang terdaftar.');}
   tokens=[];
   renderAll()}
 
