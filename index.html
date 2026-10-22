@@ -53,7 +53,7 @@
         <article class="stat"><div class="stat-head">Biaya bulan ini <span class="stat-icon">💳</span></div><strong id="costStat">Rp 186.450</strong><div class="foot positive">● Estimasi tagihan berjalan</div></article>
         <article class="stat"><div class="stat-head">Energi terpakai <span class="stat-icon">⚡</span></div><strong id="kwhStat">124,3 kWh</strong><div class="foot">Bulan berjalan</div></article>
         <article class="stat"><div class="stat-head">Daya saat ini <span class="stat-icon">◉</span></div><strong id="powerStat">325 W</strong><div class="foot positive">● Pemantauan real-time</div></article>
-        <article class="stat"><div class="stat-head" id="tokenStatLabel">Estimasi tagihan berjalan <span class="stat-icon">▤</span></div><strong id="tokenStat">6,2 hari</strong><div class="foot warning">Perkiraan berdasarkan pola pemakaian</div></article>
+        <article class="stat"><div class="stat-head" id="tokenStatLabel">Estimasi tagihan berjalan <span class="stat-icon">▤</span></div><strong id="tokenStat">6,2 hari</strong><div class="foot warning">Tarif sesuai golongan pelanggan</div></article>
       </div>
       <div class="grid-two">
         <div class="panel"><div class="panel-head"><div><h3>Grafik konsumsi energi</h3><p>Penggunaan listrik selama 7 hari terakhir</p></div><button class="text-btn" data-goto="history">Lihat riwayat ↗</button></div><div class="chart" id="chart"></div></div>
@@ -61,7 +61,7 @@
           <div class="usage-status"><div class="status-icon">⚡</div><div class="status-copy"><b>Status meter</b><small id="meterNote">Meter terhubung</small></div><div class="status-value positive" id="meterStatus">Aktif<small>Online</small></div></div>
           <div class="usage-status"><div class="status-icon">⌁</div><div class="status-copy"><b>Konsumsi hari ini</b><small>Akumulasi energi</small></div><div class="status-value" id="todayKwh">4,8 kWh<small>Hari ini</small></div></div>
           <div class="usage-status"><div class="status-icon">◷</div><div class="status-copy"><b>Periode tagihan</b><small>Berdasarkan rata-rata pemakaian</small></div><div class="status-value warning" id="tokenDate">15 Okt 2026<small>Perkiraan</small></div></div>
-          <div class="token-card"><div class="token-top"><span>🔋 Tagihan berjalan</span><span id="tokenPercent">62%</span></div><div class="token-number" id="tokenBalance">Rp 93.000</div><div class="progress"><span id="tokenProgress"></span></div><div class="token-note"><span>Estimasi sisa saldo</span><span id="tokenUsed">Rp 57.000 terpakai</span></div></div>
+          <div class="token-card"><div class="token-top"><span>🧾 Estimasi tagihan</span><span id="tokenPercent">62%</span></div><div class="token-number" id="tokenBalance">Rp 93.000</div><div class="progress"><span id="tokenProgress"></span></div><div class="token-note"><span>Biaya energi tercatat</span><span id="tokenUsed">Target biaya bulanan</span></div></div>
         </div>
       </div>
       <div class="panel table-panel"><div class="panel-head"><div><h3 id="recentTitle">Riwayat penggunaan terbaru</h3><p>Ringkasan pemakaian dan estimasi biaya</p></div><button class="text-btn" data-goto="history">Lihat semua →</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Energi</th><th>Estimasi biaya</th><th>Status</th></tr></thead><tbody id="recentTable"></tbody></table></div></div>
