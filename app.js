@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const rp=n=>'Rp '+Math.round(Number(n)||0).toLocaleString('id-ID');
 const fmt=n=>(Number(n)||0).toLocaleString('id-ID',{maximumFractionDigits:2});
-const fmtKwh=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:3,maximumFractionDigits:3});
+const fmtKwh=n=>(Number(n)||0).toLocaleString('id-ID',{maximumFractionDigits:2});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
