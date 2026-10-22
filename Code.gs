@@ -127,9 +127,15 @@ function getDashboard(session) {
   const result = selected.map(c => {
     const rs = allReadings.filter(r => r.customerId === c.customerId);
     const latest = rs[0] || null;
-    const monthRows = rs.filter(r => new Date(r.timestamp) >= monthStart);
-    const firstMonth = monthRows.length ? monthRows[monthRows.length-1] : null;
-    const energyMonth = firstMonth && latest ? Math.max(0, Number(latest.energyKwh||0)-Number(firstMonth.energyKwh||0)) : 0;
+    // Gunakan pembacaan terakhir sebelum awal bulan sebagai baseline bila tersedia.
+    const chronological = rs.slice().sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
+    const baseline = chronological.filter(r => new Date(r.timestamp) < monthStart).slice(-1)[0] || null;
+    const monthRows = chronological.filter(r => new Date(r.timestamp) >= monthStart);
+    const firstMonth = monthRows.length ? monthRows[0] : null;
+    const lastMonth = monthRows.length ? monthRows[monthRows.length-1] : null;
+    const startEnergy = baseline ? Number(baseline.energyKwh||0) : (firstMonth ? Number(firstMonth.energyKwh||0) : 0);
+    const endEnergy = lastMonth ? Number(lastMonth.energyKwh||0) : startEnergy;
+    const energyMonth = Math.max(0, endEnergy - startEnergy);
     const costMonth = energyMonth * Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
     const online = latest && ((now-new Date(latest.receivedAt || latest.timestamp))/60000 <= CONFIG.MAX_AGE_MINUTES_ONLINE);
     const mode = String(c.mode || 'PASCABAYAR').toUpperCase();
@@ -176,7 +182,7 @@ function adminCreateCustomer(session, payload) {
   const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   ss.getSheetByName('Pelanggan').appendRow([id,name,meterId,mode,tariff,Number(payload.powerVa)||1300,Number(payload.tokenBalanceRp)||0,Number(payload.monthlyTargetRp)||0,true,new Date()]);
   // Account is created with a temporary PIN; change it before real deployment.
-  const pin=String(Math.floor(100000+Math.random()*900000));
+  const pin=String(100000 + (parseInt(Utilities.getUuid().replace(/-/g,'').slice(0,7),16) % 900000));
   ss.getSheetByName('Users').appendRow([id,hashPin_(pin),'PELANGGAN',id,true]);
   return {ok:true,customerId:id,temporaryPin:pin,message:'Pelanggan dibuat. Bagikan PIN sementara secara aman dan minta pengguna menggantinya.'};
 }
@@ -186,18 +192,24 @@ function adminAddTokenBalance(session, customerId, amountRp, note) {
   if(!s.ok || s.role!=='ADMIN') return {ok:false,message:'Akses admin diperlukan.'};
   const amount=Number(amountRp);
   if(!Number.isFinite(amount)||amount<=0||amount>10000000) return {ok:false,message:'Nominal tidak valid.'};
-  const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sh=ss.getSheetByName('Pelanggan');
-  const rows=getRows_('Pelanggan');
-  const c=rows.find(r=>r.customerId===String(customerId));
-  if(!c) return {ok:false,message:'Pelanggan tidak ditemukan.'};
-  if(String(c.mode).toUpperCase()!=='PRABAYAR') return {ok:false,message:'Saldo token hanya untuk pelanggan prabayar.'};
-  const row=rows.findIndex(r=>r.customerId===String(customerId))+2;
-  const newBalance=Number(c.tokenBalanceRp||0)+amount;
-  sh.getRange(row,7).setValue(newBalance);
-  const code=genTokenCode_();
-  ss.getSheetByName('Token').appendRow([new Date(),customerId,amount,newBalance,String(note||'Penambahan saldo internal'),s.username,code]);
-  return {ok:true,balanceRp:newBalance,tokenCode:code,message:'Saldo internal berhasil diperbarui. Ini bukan penerbitan token PLN resmi.'};
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const sh=ss.getSheetByName('Pelanggan');
+    const rows=getRows_('Pelanggan');
+    const c=rows.find(r=>r.customerId===String(customerId));
+    if(!c) return {ok:false,message:'Pelanggan tidak ditemukan.'};
+    if(String(c.mode).toUpperCase()!=='PRABAYAR') return {ok:false,message:'Saldo token hanya untuk pelanggan prabayar.'};
+    const row=rows.findIndex(r=>r.customerId===String(customerId))+2;
+    const newBalance=Number(c.tokenBalanceRp||0)+amount;
+    sh.getRange(row,7).setValue(newBalance);
+    const code=genTokenCode_();
+    ss.getSheetByName('Token').appendRow([new Date(),customerId,amount,newBalance,String(note||'Penambahan saldo internal').slice(0,200),s.username,code]);
+    return {ok:true,balanceRp:newBalance,tokenCode:code,message:'Saldo internal berhasil diperbarui. Ini bukan penerbitan token PLN resmi.'};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** ESP32 sends JSON: {apiKey, deviceId, customerId, timestamp, voltageV, currentA, powerW, energyKwh, frequencyHz, powerFactor, source} */
@@ -364,10 +376,22 @@ function getTokens(session){
 function genTokenCode_(){let d='';for(let i=0;i<20;i++)d+=Math.floor(Math.random()*10);return d.replace(/(\d{4})(?=\d)/g,'$1-');}
 /** Pemakaian harian (kWh & Rp) dari selisih energi kumulatif. readingsDesc = terbaru dulu. */
 function dailyUsage_(readingsDesc,tariff,customerId){
+  // Bagi selisih energi secara proporsional ke setiap tanggal pada interval pembacaan.
   const asc=readingsDesc.slice().reverse(),m={};
   for(let i=1;i<asc.length;i++){
-    const d=Number(asc[i].energyKwh)-Number(asc[i-1].energyKwh); if(!(d>=0)) continue;
-    const k=Utilities.formatDate(new Date(asc[i].timestamp),CONFIG.TIME_ZONE,'yyyy-MM-dd'); m[k]=(m[k]||0)+d;
+    const t0=new Date(asc[i-1].timestamp).getTime(), t1=new Date(asc[i].timestamp).getTime();
+    const e0=Number(asc[i-1].energyKwh), e1=Number(asc[i].energyKwh);
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(e0)||!Number.isFinite(e1)||e1<e0) continue;
+    const delta=e1-e0, duration=t1-t0;
+    let cursor=t0;
+    while(cursor<t1){
+      const key=Utilities.formatDate(new Date(cursor),CONFIG.TIME_ZONE,'yyyy-MM-dd');
+      // Zona Asia/Jakarta adalah UTC+07:00 dan tidak menggunakan DST.
+      const nextMidnight=new Date(key+'T00:00:00+07:00').getTime()+86400000;
+      const segmentEnd=Math.min(t1,nextMidnight);
+      m[key]=(m[key]||0)+delta*((segmentEnd-cursor)/duration);
+      cursor=segmentEnd;
+    }
   }
   return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:round_(m[k],3),costRp:Math.round(m[k]*tariff)}));
 }
