@@ -1,6 +1,7 @@
 const $=id=>document.getElementById(id);
 const rp=n=>'Rp '+Math.round(Number(n)||0).toLocaleString('id-ID');
 const fmt=n=>(Number(n)||0).toLocaleString('id-ID',{maximumFractionDigits:2});
+const fmtKwh=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:3,maximumFractionDigits:3});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -95,7 +96,10 @@ function showPage(p){if(['customers','tokens'].includes(p)&&!admin())p='dashboar
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
+let refreshInFlight=false;
 async function refresh(){
+  if(refreshInFlight || !session) return;
+  refreshInFlight=true;
   try{
     const res=await api('getDashboard',session);
     if(!res?.ok){
@@ -108,15 +112,16 @@ async function refresh(){
     if(admin()){const t=await api('getTokens',session);tokens=t?.ok?(t.rows||[]):[]}
     $('liveText').textContent=DEMO?'MODE DEMO':'TERHUBUNG KE SHEETS';renderAll();
   }catch(err){$('liveText').textContent=DEMO?'MODE DEMO':'API TIDAK TERHUBUNG';throw err}
+  finally { refreshInFlight=false; }
 }
 
 // ---- Render
 function renderAll(){if(!session)return;
   $('todayLabel').textContent=new Date().toLocaleDateString('id-ID',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
   const c=admin()?null:customers.find(x=>x.customerId===session.customerId),L=c?.latest,sum=k=>customers.reduce((a,x)=>a+(Number(x[k])||0),0);
-  $('costStat').textContent=rp(c?c.costMonthRp:sum('costMonthRp'));$('kwhStat').textContent=fmt(c?c.energyMonthKwh:sum('energyMonthKwh'))+' kWh';
+  $('costStat').textContent=rp(c?c.costMonthRp:sum('costMonthRp'));$('kwhStat').textContent=fmtKwh(c?c.energyMonthKwh:sum('energyMonthKwh'))+' kWh';
   $('powerStat').textContent=fmt(c?L?.powerW:customers.reduce((a,x)=>a+(Number(x.latest?.powerW)||0),0))+' W';
-  const today=dk(new Date());$('todayKwh').innerHTML=fmt(rows().filter(r=>r.date===today).reduce((a,r)=>a+r.kwh,0))+' kWh<small>Hari ini</small>';
+  const today=dk(new Date());$('todayKwh').innerHTML=fmtKwh(rows().filter(r=>r.date===today).reduce((a,r)=>a+r.kwh,0))+' kWh<small>Hari ini</small>';
   const days=c?.estimatedDaysLeft,pre=c?.mode==='PRABAYAR';
   $('tokenStatLabel').innerHTML=(admin()?'Pelanggan aktif':'Estimasi token habis')+' <span class="stat-icon">▤</span>';
   $('tokenStat').textContent=admin()?customers.length+' pelanggan':pre?(days==null?'—':fmt(days)+' hari'):'Pascabayar';
@@ -132,11 +137,11 @@ function renderAll(){if(!session)return;
   renderChart();renderRecent();renderHistory();renderCalendar();renderCustomers();renderTokens()}
 function renderChart(){const ds=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);ds.push(dk(d))}
   const rs=rows(),v=ds.map(k=>rs.filter(r=>r.date===k).reduce((a,r)=>a+r.kwh,0)),mx=Math.max(.1,...v);
-  $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmt(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('')}
-function renderRecent(){$('recentTable').innerHTML=sorted().slice(0,5).map(r=>`<tr><td>${dLabel(r.date)}</td><td><b>${fmt(r.kwh)} kWh</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada data dari ESP32.</td></tr>'}
+  $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmtKwh(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('')}
+function renderRecent(){$('recentTable').innerHTML=sorted().slice(0,5).map(r=>`<tr><td>${dLabel(r.date)}</td><td><b>${fmtKwh(r.kwh)} kWh</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada data dari ESP32.</td></tr>'}
 function renderHistory(){const q=$('historySearch').value.toLowerCase(),f=$('historyFilter').value;
   const d=sorted().filter(r=>(r.date+' '+r.customerId+' '+cust(r.customerId).name).toLowerCase().includes(q)&&(f==='all'||(f==='high')===high(r)));
-  $('historyTable').innerHTML=d.map(r=>`<tr><td>${dLabel(r.date)}</td><td class="admin-col ${admin()?'':'hidden'}">${esc(r.customerId)} · ${esc(cust(r.customerId).name)}</td><td><b>${fmt(r.kwh)}</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||`<tr><td colspan="${admin()?5:4}" class="empty">Tidak ada data.</td></tr>`}
+  $('historyTable').innerHTML=d.map(r=>`<tr><td>${dLabel(r.date)}</td><td class="admin-col ${admin()?'':'hidden'}">${esc(r.customerId)} · ${esc(cust(r.customerId).name)}</td><td><b>${fmtKwh(r.kwh)}</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||`<tr><td colspan="${admin()?5:4}" class="empty">Tidak ada data.</td></tr>`}
 $('historySearch').oninput=renderHistory;$('historyFilter').onchange=renderHistory;
 function renderCalendar(){const y=shown.getFullYear(),m=shown.getMonth(),first=new Date(y,m,1).getDay(),n=new Date(y,m+1,0).getDate(),by={};
   rows().forEach(r=>{by[r.date]=(by[r.date]||0)+r.kwh});$('monthTitle').textContent=shown.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
@@ -144,10 +149,10 @@ function renderCalendar(){const y=shown.getFullYear(),m=shown.getMonth(),first=n
   for(let d=1;d<=n;d++){const k=dk(new Date(y,m,d));h+=`<div class="day ${by[k]!=null?'has-data':''} ${k===dk(new Date())?'today':''}" data-d="${k}">${d}</div>`}
   $('calendarGrid').innerHTML=h;$('calendarGrid').onclick=e=>{const el=e.target.closest('.day');if(!el)return;const k=el.dataset.d,rs=rows().filter(r=>r.date===k);
     document.querySelectorAll('.day.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');
-    $('dayDetail').innerHTML=rs.length?`<b>${dLabel(k)}</b><br>Pemakaian: <b>${fmt(rs.reduce((a,r)=>a+r.kwh,0))} kWh</b> · Biaya: <b>${rp(rs.reduce((a,r)=>a+r.costRp,0))}</b>`:`<b>${dLabel(k)}</b><br>Tidak ada data pemakaian.`}}
+    $('dayDetail').innerHTML=rs.length?`<b>${dLabel(k)}</b><br>Pemakaian: <b>${fmtKwh(rs.reduce((a,r)=>a+r.kwh,0))} kWh</b> · Biaya: <b>${rp(rs.reduce((a,r)=>a+r.costRp,0))}</b>`:`<b>${dLabel(k)}</b><br>Tidak ada data pemakaian.`}}
 $('prevMonth').onclick=()=>{shown.setMonth(shown.getMonth()-1);renderCalendar()};$('nextMonth').onclick=()=>{shown.setMonth(shown.getMonth()+1);renderCalendar()};
 function renderCustomers(){if(!admin())return;const q=$('customerSearch').value.toLowerCase();
-  $('customerTable').innerHTML=customers.filter(c=>(c.customerId+' '+c.name).toLowerCase().includes(q)).map(c=>`<tr><td><b>${esc(c.customerId)}</b></td><td>${esc(c.name)}</td><td>${fmt(c.powerVa)} VA</td><td>${fmt(c.energyMonthKwh)} kWh</td><td>${rp(c.costMonthRp)}</td><td><span class="badge ${c.online?'':'amber'}">${c.online?'Online':'Offline'}</span></td><td><button class="small-btn" data-view="${esc(c.customerId)}">Lihat riwayat</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">Belum ada pelanggan.</td></tr>'}
+  $('customerTable').innerHTML=customers.filter(c=>(c.customerId+' '+c.name).toLowerCase().includes(q)).map(c=>`<tr><td><b>${esc(c.customerId)}</b></td><td>${esc(c.name)}</td><td>${fmt(c.powerVa)} VA</td><td>${fmtKwh(c.energyMonthKwh)} kWh</td><td>${rp(c.costMonthRp)}</td><td><span class="badge ${c.online?'':'amber'}">${c.online?'Online':'Offline'}</span></td><td><button class="small-btn" data-view="${esc(c.customerId)}">Lihat riwayat</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">Belum ada pelanggan.</td></tr>'}
 $('customerSearch').oninput=renderCustomers;
 $('customerTable').onclick=e=>{const id=e.target.dataset.view;if(!id)return;showPage('history');selId=id;$('historySearch').value=id;renderAll();toast('Riwayat '+cust(id).name)};
 function renderTokens(){if(!admin())return;$('tokenTable').innerHTML=tokens.map(t=>`<tr><td>${new Date(t.createdAt).toLocaleString('id-ID')}</td><td><b>${esc(t.customerId)}</b></td><td>${esc(t.name)}</td><td>${rp(t.amountRp)}</td><td class="code">${esc(t.tokenCode||'—')}</td><td>${esc(t.note)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Belum ada token dibuat.</td></tr>'}
@@ -169,12 +174,22 @@ $('createToken').onclick=()=>openModal('token');$('addCustomer').onclick=()=>ope
 // ---- Cetak rekap & CSV
 function printRecap(){const cs=admin()?customers:customers.filter(c=>c.customerId===session.customerId);
   $('printArea').innerHTML=`<h1>Rekap kWh-Ku</h1><p>Dicetak: ${new Date().toLocaleString('id-ID')} · Oleh: ${esc(session.name)}${selId?' · Pelanggan '+esc(selId):''}</p>
-  <h3>Ringkasan bulan ini</h3><table><tr><th>ID</th><th>Nama</th><th>Daya</th><th>Energi (kWh)</th><th>Biaya (Rp)</th><th>Saldo token</th></tr>${cs.map(c=>`<tr><td>${esc(c.customerId)}</td><td>${esc(c.name)}</td><td>${fmt(c.powerVa)} VA</td><td>${fmt(c.energyMonthKwh)}</td><td>${rp(c.costMonthRp)}</td><td>${c.mode==='PRABAYAR'?rp(c.tokenBalanceRp):'Pascabayar'}</td></tr>`).join('')}</table>
-  <h3>Riwayat harian</h3><table><tr><th>Tanggal</th><th>Pelanggan</th><th>kWh</th><th>Biaya (Rp)</th></tr>${sorted().slice(0,93).map(r=>`<tr><td>${dLabel(r.date)}</td><td>${esc(r.customerId)} ${esc(cust(r.customerId).name)}</td><td>${fmt(r.kwh)}</td><td>${rp(r.costRp)}</td></tr>`).join('')}</table>`;
+  <h3>Ringkasan bulan ini</h3><table><tr><th>ID</th><th>Nama</th><th>Daya</th><th>Energi (kWh)</th><th>Biaya (Rp)</th><th>Saldo token</th></tr>${cs.map(c=>`<tr><td>${esc(c.customerId)}</td><td>${esc(c.name)}</td><td>${fmt(c.powerVa)} VA</td><td>${fmtKwh(c.energyMonthKwh)}</td><td>${rp(c.costMonthRp)}</td><td>${c.mode==='PRABAYAR'?rp(c.tokenBalanceRp):'Pascabayar'}</td></tr>`).join('')}</table>
+  <h3>Riwayat harian</h3><table><tr><th>Tanggal</th><th>Pelanggan</th><th>kWh</th><th>Biaya (Rp)</th></tr>${sorted().slice(0,93).map(r=>`<tr><td>${dLabel(r.date)}</td><td>${esc(r.customerId)} ${esc(cust(r.customerId).name)}</td><td>${fmtKwh(r.kwh)}</td><td>${rp(r.costRp)}</td></tr>`).join('')}</table>`;
   window.print()}
 $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...sorted().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV diunduh')};
 restoreSavedSession();
-setInterval(()=>{if(session)refresh().catch(e=>console.warn(e))},CFG.REFRESH_MS||15000);
+let refreshTimer=null;
+function startRefreshTimer(){
+  if(refreshTimer) clearInterval(refreshTimer);
+  refreshTimer=setInterval(()=>{
+    if(session && document.visibilityState==='visible' && !refreshInFlight) refresh().catch(e=>console.warn(e));
+  },Math.max(30000,Number(CFG.REFRESH_MS)||30000));
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && session) refresh().catch(e=>console.warn(e));
+});
+startRefreshTimer();
