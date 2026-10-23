@@ -470,10 +470,24 @@ function getTokens(session){
 function genTokenCode_(){let d='';for(let i=0;i<20;i++)d+=Math.floor(Math.random()*10);return d.replace(/(\d{4})(?=\d)/g,'$1-');}
 /** Pemakaian harian (kWh & Rp) dari selisih energi kumulatif. readingsDesc = terbaru dulu. */
 function dailyUsage_(readingsDesc,tariff,customerId){
+  // Distribusikan selisih counter ke tanggal yang benar berdasarkan lama interval,
+  // agar interval yang melewati tengah malam tidak seluruhnya masuk ke satu hari.
   const asc=readingsDesc.slice().reverse(),m={};
   for(let i=1;i<asc.length;i++){
-    const d=Number(asc[i].energyKwh)-Number(asc[i-1].energyKwh); if(!(d>=0)) continue;
-    const k=Utilities.formatDate(new Date(asc[i].timestamp),CONFIG.TIME_ZONE,'yyyy-MM-dd'); m[k]=(m[k]||0)+d;
+    const r0=asc[i-1],r1=asc[i];
+    const t0=new Date(r0.timestamp).getTime(),t1=new Date(r1.timestamp).getTime();
+    const e0=Number(r0.energyKwh),e1=Number(r1.energyKwh),delta=e1-e0;
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(delta)||delta<0) continue;
+    let cursor=t0;
+    while(cursor<t1){
+      const day=Utilities.formatDate(new Date(cursor),CONFIG.TIME_ZONE,'yyyy-MM-dd');
+      const nextDay=Utilities.parseDate(day+' 00:00:00',CONFIG.TIME_ZONE,'yyyy-MM-dd HH:mm:ss').getTime()+24*60*60*1000;
+      const end=Math.min(t1,nextDay);
+      if(end<=cursor) break;
+      const share=delta*((end-cursor)/(t1-t0));
+      m[day]=(m[day]||0)+share;
+      cursor=end;
+    }
   }
   return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:round_(m[k],2),costRp:round_(m[k]*tariff,2)}));
 }
