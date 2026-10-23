@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
-const rp=n=>'Rp '+Math.round(Number(n)||0).toLocaleString('id-ID');
-const fmt=n=>(Number(n)||0).toLocaleString('id-ID',{maximumFractionDigits:2});
-const fmtEnergy=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:0,maximumFractionDigits:3});
+const rp=n=>'Rp '+(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtEnergy=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -128,7 +128,7 @@ function renderMonitoring(){
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
 }
 $('exportMonitoring').onclick=()=>{
-  const readings=(monitoring.readings||[]).filter(r=>admin()||r.customerId===session?.customerId);
+  const readings=(monitoring.readings||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,10);
   const data=[['timestamp','receivedAt','customerId','meterId','energyKwh','powerW','voltageV','currentA'],...readings.map(r=>[r.timestamp,r.receivedAt||'',r.customerId,r.meterId,r.energyKwh,r.powerW,r.voltageV,r.currentA])];
   const csv=data.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();URL.revokeObjectURL(a.href);
