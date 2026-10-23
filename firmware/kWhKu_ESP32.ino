@@ -15,7 +15,7 @@ constexpr int PZEM_RX_PIN = 16;
 constexpr int PZEM_TX_PIN = 17;
 PZEM004Tv30 pzem(Serial2, PZEM_RX_PIN, PZEM_TX_PIN);
 
-constexpr unsigned long SEND_INTERVAL_MS = 30000;
+constexpr unsigned long SEND_INTERVAL_MS = 60000;
 constexpr unsigned long WIFI_RETRY_MS = 10000;
 unsigned long lastSendMs = 0;
 unsigned long lastWiFiRetryMs = 0;
