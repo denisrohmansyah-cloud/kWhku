@@ -158,7 +158,7 @@ void loop() {
   Serial.printf("Tegangan    : %.2f V\n", voltage);
   Serial.printf("Arus        : %.2f A\n", current);
   Serial.printf("Daya        : %.2f W\n", power);
-  Serial.printf("Energi      : %.2f kWh\n", energy);
+  Serial.printf("Energi      : %.3f kWh\n", energy);
   Serial.printf("Frekuensi   : %.2f Hz\n", frequency);
   Serial.printf("Faktor daya : %.2f\n", powerFactor);
   sendToAppsScript(voltage, current, power, energy, frequency, powerFactor);
