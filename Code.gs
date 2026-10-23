@@ -33,7 +33,10 @@ const SHEETS = {
   readings: ['Data_Listrik', ['timestamp','customerId','meterId','voltageV','currentA','powerW','energyKwh','frequencyHz','powerFactor','source','receivedAt']],
   tokens: ['Token', ['createdAt','customerId','amountRp','balanceAfterRp','note','createdBy','tokenCode']],
   users: ['Users', ['username','pin','role','customerId','active']],
-  settings: ['Pengaturan', ['key','value']]
+  settings: ['Pengaturan', ['key','value']],
+  deviceStatus: ['Data_Perangkat', ['customerId','meterId','status','lastReceivedAt','lastStatusChangeAt','updatedAt']],
+  connections: ['Log_Koneksi', ['timestamp','customerId','meterId','status','lastReceivedAt','details']],
+  incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']]
 };
 
 function doGet(e) {
@@ -61,7 +64,27 @@ function setupKWhku() {
     }
   });
   seedDemoRows_();
-  return {ok:true, message:'Sheet kWhku siap. Hapus data demo sebelum penggunaan produksi.'};
+  return {ok:true, message:'Sheet kWhku siap. Jalankan setupMonitoring() sekali untuk mengaktifkan log koneksi otomatis.'};
+}
+
+// Jalankan sekali dari Apps Script Editor setelah setupKWhku().
+function setupMonitoring() {
+  assertConfigured_();
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  ['Data_Perangkat','Log_Koneksi','Log_Gangguan'].forEach(name => {
+    const headers = SHEETS[Object.keys(SHEETS).find(k => SHEETS[k][0] === name)][1];
+    let sh = ss.getSheetByName(name);
+    if (!sh) sh = ss.insertSheet(name);
+    if (sh.getLastRow() === 0) {
+      sh.getRange(1,1,1,headers.length).setValues([headers]);
+      sh.setFrozenRows(1);
+      sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#e32636').setFontColor('#ffffff');
+    }
+  });
+  const exists = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'checkDeviceStatuses');
+  if (!exists) ScriptApp.newTrigger('checkDeviceStatuses').timeBased().everyMinutes(1).create();
+  checkDeviceStatuses();
+  return {ok:true,message:'Monitoring koneksi aktif; pemeriksaan dijalankan setiap menit.'};
 }
 
 function seedDemoRows_() {
@@ -221,6 +244,7 @@ function doPost(e) {
     if(!Number.isFinite(energy)||energy<0||energy>1e9||
        ![voltage,current,power,frequency,pf].every(Number.isFinite)||
        voltage<0||voltage>300||current<0||current>1000||power<0||power>1e7||frequency<0||frequency>1000||pf<0||pf>1) {
+      logIncident_(customerId, deviceId, 'INVALID_MEASUREMENT', 'WARNING', 'Pembacaan ditolak karena nilai sensor di luar batas valid.', '');
       return json_({ok:false,message:'Invalid measurement'});
     }
     const parsedTimestamp=body.timestamp ? new Date(body.timestamp) : new Date();
@@ -230,12 +254,15 @@ function doPost(e) {
     const lock=LockService.getScriptLock();
     lock.waitLock(10000);
     try {
+      const receivedAt = new Date();
       ss.getSheetByName('Data_Listrik').appendRow([
         timestamp,customerId,deviceId,voltage,current,power,energy,
-        frequency,pf,String(body.source||'ESP32').slice(0,40),new Date()
+        frequency,pf,String(body.source||'ESP32').slice(0,40),receivedAt
       ]);
+      updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
+      if (energy < 0) logIncident_(customerId, deviceId, 'INVALID_ENERGY', 'CRITICAL', 'Energi kumulatif bernilai negatif.', '');
     } finally { lock.releaseLock(); }
-    return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString()});
+    return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
   } catch(err) {
     console.error('doPost error:', err);
     return json_({ok:false,message:'Permintaan gagal diproses. Periksa konfigurasi dan log Apps Script.'});
@@ -290,6 +317,102 @@ function getRows_(key) {
   const values=sh.getRange(2,1,sh.getLastRow()-1,headers.length).getValues();
   return values.map(row=>Object.fromEntries(headers.map((h,i)=>[h,row[i]])));
 }
+function getMonitoring(session, limit) {
+  const s = validateSession_(session);
+  if (!s.ok) return s;
+  const allCustomers = getRows_('Pelanggan').filter(c => truthy_(c.active) && String(c.mode).toUpperCase() === 'PASCABAYAR');
+  const selected = s.role === 'ADMIN' ? allCustomers : allCustomers.filter(c => String(c.customerId) === s.customerId);
+  const ids = selected.map(c => String(c.customerId));
+  const readings = getRows_('Data_Listrik').filter(r => ids.includes(String(r.customerId)))
+    .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp))
+    .slice(0, Math.min(Math.max(Number(limit)||100,1),500)).map(r => {
+      const n = normalizeReading_(r);
+      n.receivedAt = new Date(r.receivedAt || r.timestamp).toISOString();
+      n.voltageV = Number(r.voltageV || 0); n.currentA = Number(r.currentA || 0);
+      n.powerW = Number(r.powerW || 0); n.energyKwh = Number(r.energyKwh || 0);
+      return n;
+    });
+  const connections = getRows_('Log_Koneksi').filter(r => ids.includes(String(r.customerId)))
+    .sort((a,b) => new Date(b.timestamp)-new Date(a.timestamp)).slice(0,100).map(r => ({
+      timestamp:new Date(r.timestamp).toISOString(),customerId:r.customerId,meterId:r.meterId,
+      status:String(r.status||''),lastReceivedAt:r.lastReceivedAt ? new Date(r.lastReceivedAt).toISOString() : '',
+      details:String(r.details||'')
+    }));
+  const incidents = getRows_('Log_Gangguan').filter(r => ids.includes(String(r.customerId)))
+    .sort((a,b) => new Date(b.timestamp)-new Date(a.timestamp)).slice(0,100).map(r => ({
+      timestamp:new Date(r.timestamp).toISOString(),customerId:r.customerId,meterId:r.meterId,
+      eventType:String(r.eventType||''),severity:String(r.severity||'INFO'),message:String(r.message||''),
+      resolvedAt:r.resolvedAt ? new Date(r.resolvedAt).toISOString() : ''
+    }));
+  const devices = getRows_('Data_Perangkat').filter(r => ids.includes(String(r.customerId))).map(r => ({
+    customerId:r.customerId,meterId:r.meterId,status:String(r.status||'UNKNOWN'),
+    lastReceivedAt:r.lastReceivedAt ? new Date(r.lastReceivedAt).toISOString() : '',
+    lastStatusChangeAt:r.lastStatusChangeAt ? new Date(r.lastStatusChangeAt).toISOString() : ''
+  }));
+  return {ok:true,readings,connections,incidents,devices,checkedAt:new Date().toISOString()};
+}
+
+// Pemeriksaan terjadwal berjalan di server walaupun website tidak dibuka.
+function checkDeviceStatuses() {
+  assertConfigured_();
+  const customers = getRows_('Pelanggan').filter(c => truthy_(c.active) && String(c.mode).toUpperCase() === 'PASCABAYAR');
+  const readings = getRows_('Data_Listrik');
+  const now = new Date();
+  customers.forEach(c => {
+    const rs = readings.filter(r => String(r.customerId) === String(c.customerId))
+      .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp));
+    const last = rs[0];
+    const lastSeen = last ? new Date(last.receivedAt || last.timestamp) : null;
+    const status = lastSeen && (now - lastSeen) <= CONFIG.MAX_AGE_MINUTES_ONLINE*60000 ? 'ONLINE' : 'OFFLINE';
+    updateDeviceStatus_(c.customerId, c.meterId, status, lastSeen, status === 'ONLINE' ? 'Data diterima dalam batas waktu.' : 'Tidak ada data baru melewati batas waktu.');
+  });
+}
+
+function updateDeviceStatus_(customerId, meterId, status, lastReceivedAt, details) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const statusSheet = ss.getSheetByName('Data_Perangkat');
+  const connectionsSheet = ss.getSheetByName('Log_Koneksi');
+  const incidentsSheet = ss.getSheetByName('Log_Gangguan');
+  if (!statusSheet || !connectionsSheet || !incidentsSheet) return;
+  const rows = getRows_('Data_Perangkat');
+  const index = rows.findIndex(r => String(r.customerId) === String(customerId) && String(r.meterId) === String(meterId));
+  const previous = index >= 0 ? String(rows[index].status || '') : '';
+  const now = new Date();
+  const seen = lastReceivedAt instanceof Date && !isNaN(lastReceivedAt.getTime()) ? lastReceivedAt : '';
+  if (index < 0) {
+    statusSheet.appendRow([customerId,meterId,status,seen,now,now]);
+  } else {
+    statusSheet.getRange(index+2,3,1,4).setValues([[status,seen,(previous !== status ? now : rows[index].lastStatusChangeAt || now),now]]);
+  }
+  if (previous !== status) {
+    connectionsSheet.appendRow([now,customerId,meterId,status,seen,details]);
+    if (status === 'OFFLINE') {
+      logIncident_(customerId,meterId,'CONNECTION_LOST','WARNING','Tidak ada data ESP32 melewati '+CONFIG.MAX_AGE_MINUTES_ONLINE+' menit.', '');
+    } else if (status === 'ONLINE' && previous === 'OFFLINE') {
+      resolveLatestIncident_(customerId,meterId,'CONNECTION_LOST',now);
+      logIncident_(customerId,meterId,'CONNECTION_RESTORED','INFO','Data ESP32 kembali diterima.','');
+    }
+  }
+}
+
+function logIncident_(customerId,meterId,eventType,severity,message,resolvedAt) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sh = ss.getSheetByName('Log_Gangguan');
+  if (!sh) return;
+  sh.appendRow([new Date(),customerId,meterId,eventType,severity,message,resolvedAt || '']);
+}
+function resolveLatestIncident_(customerId,meterId,eventType,when) {
+  const sh = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName('Log_Gangguan');
+  if (!sh || sh.getLastRow()<2) return;
+  const values = sh.getRange(2,1,sh.getLastRow()-1,7).getValues();
+  for (let i=values.length-1;i>=0;i--) {
+    if (String(values[i][1])===String(customerId) && String(values[i][2])===String(meterId) &&
+        String(values[i][3])===eventType && !values[i][6]) {
+      sh.getRange(i+2,7).setValue(when); return;
+    }
+  }
+}
+
 function normalizeReading_(r) {
   return {timestamp:new Date(r.timestamp).toISOString(),customerId:r.customerId,meterId:r.meterId,
     voltageV:Number(r.voltageV||0),currentA:Number(r.currentA||0),powerW:Number(r.powerW||0),
@@ -316,6 +439,7 @@ function handleApi_(body){
     switch(body.fn){
       case 'login': return apiLogin_(a[0],a[1]);
       case 'getDashboard': return getDashboard(a[0]);
+      case 'getMonitoring': return getMonitoring(a[0],a[1]);
       case 'getHistory': return getHistory(a[0],a[1],a[2]);
       case 'getTokens': return getTokens(a[0]);
       case 'adminCreateCustomer': return adminCreateCustomer(a[0],a[1]||{});
