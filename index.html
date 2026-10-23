@@ -40,6 +40,7 @@
       <button class="active" data-page="dashboard"><span class="ico">▦</span>Dashboard</button>
       <button data-page="calendar"><span class="ico">▣</span>Kalender Pemakaian</button>
       <button data-page="history"><span class="ico">↗</span>Riwayat Penggunaan</button>
+      <button data-page="monitoring"><span class="ico">⌁</span>Monitoring Teknis</button>
       <button data-page="customers" class="admin-only hidden"><span class="ico">♙</span>Data Pelanggan</button>
       
     </nav>
@@ -71,6 +72,27 @@
     </section>
     <section id="page-history" class="section">
       <div class="panel table-panel"><div class="panel-head"><div><h3>Riwayat penggunaan listrik</h3><p id="historySub">Pantau konsumsi energi dan biaya berdasarkan tanggal.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="printHistory">🖨 Cetak rekap</button><button class="secondary" id="exportHistory">⇩ Ekspor CSV</button></div></div><div class="filter-row" style="padding:0 20px;margin-top:18px"><input id="historySearch" placeholder="Cari tanggal / pelanggan..." /><select id="historyFilter"><option value="all">Semua status</option><option value="normal">Normal</option><option value="high">Pemakaian tinggi</option></select></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th class="admin-col hidden">Pelanggan</th><th>Energi (kWh)</th><th>Biaya (Rp)</th><th>Status</th></tr></thead><tbody id="historyTable"></tbody></table></div></div>
+    </section>
+    <section id="page-monitoring" class="section">
+      <div class="stats monitoring-stats">
+        <article class="stat"><div class="stat-head">Status perangkat</div><strong id="monStatus">—</strong><div class="foot" id="monLastSeen">Menunggu data</div></article>
+        <article class="stat"><div class="stat-head">Tegangan terbaru</div><strong id="monVoltage">— V</strong><div class="foot">Pembacaan terakhir</div></article>
+        <article class="stat"><div class="stat-head">Arus terbaru</div><strong id="monCurrent">— A</strong><div class="foot">Pembacaan terakhir</div></article>
+        <article class="stat"><div class="stat-head">Energi kumulatif</div><strong id="monEnergy">— kWh</strong><div class="foot" id="monPower">Daya — W</div></article>
+      </div>
+      <div class="panel table-panel">
+        <div class="panel-head"><div><h3>Riwayat pembacaan sensor</h3><p>Energi kumulatif, daya, tegangan, arus, timestamp, dan waktu diterima server.</p></div><button class="secondary" id="exportMonitoring">⇩ Ekspor CSV</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
+      </div>
+      <div class="panel table-panel monitoring-panel">
+        <div class="panel-head"><div><h3>Riwayat koneksi</h3><p>Perubahan status yang tercatat oleh server.</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Waktu</th><th>ID pelanggan</th><th>Perangkat</th><th>Status</th><th>Keterangan</th></tr></thead><tbody id="monitorConnections"><tr><td colspan="5" class="empty">Belum ada perubahan koneksi.</td></tr></tbody></table></div>
+      </div>
+      <div class="panel table-panel monitoring-panel">
+        <div class="panel-head"><div><h3>Log gangguan</h3><p>Gangguan dan pemulihan yang terdeteksi oleh server.</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Waktu</th><th>ID pelanggan</th><th>Perangkat</th><th>Jenis</th><th>Tingkat</th><th>Detail</th><th>Pulih pada</th></tr></thead><tbody id="monitorIncidents"><tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr></tbody></table></div>
+      </div>
+      <p class="sub monitoring-note">Status Offline berarti tidak ada pembacaan baru selama lebih dari 3 menit. Penyebab spesifik seperti listrik padam atau Wi-Fi terputus tidak dapat dipastikan hanya dari ketiadaan data.</p>
     </section>
     <section id="page-customers" class="section">
       <div class="panel table-panel"><div class="panel-head"><div><h3>Daftar pelanggan</h3><p>Kelola pelanggan dan pantau ringkasan penggunaan mereka.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="printCustomers">🖨 Cetak rekap</button><button class="primary" id="addCustomer">＋ Tambah pelanggan</button></div></div><div class="filter-row" style="padding:0 20px;margin-top:18px"><input id="customerSearch" placeholder="Cari nama / ID pelanggan..." /></div><div class="table-wrap"><table><thead><tr><th>ID pelanggan</th><th>Nama pelanggan</th><th>Daya</th><th>Penggunaan bulan ini</th><th>Biaya berjalan</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="customerTable"></tbody></table></div></div>
