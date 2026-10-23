@@ -110,7 +110,7 @@ $('customerTable').onclick=e=>{const id=e.target.dataset.view;if(!id)return;show
 function renderTokens(){}
 
 function renderMonitoring(){
-  const readings=(monitoring.readings||[]).filter(r=>admin()||r.customerId===session?.customerId);
+  const readings=(monitoring.readings||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,10);
   const connections=(monitoring.connections||[]).filter(r=>admin()||r.customerId===session?.customerId);
   const incidents=(monitoring.incidents||[]).filter(r=>admin()||r.customerId===session?.customerId);
   const devices=(monitoring.devices||[]).filter(r=>admin()||r.customerId===session?.customerId);
