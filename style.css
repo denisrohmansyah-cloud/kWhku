@@ -8,3 +8,11 @@
 .badge.red{background:#ffe1e4;color:var(--red)}.code{font-family:monospace;font-weight:700;letter-spacing:1px}
 #printArea{display:none}
 @media print{body>*:not(#printArea){display:none!important}#printArea{display:block!important;padding:16px;color:#000;background:#fff}#printArea table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 18px}#printArea th,#printArea td{border:1px solid #888;padding:6px;text-align:left}#printArea h1{color:#e32636;margin:0 0 4px}}
+
+/* Monitoring teknis */
+.monitoring-stats{margin-top:4px}
+.monitoring-panel{margin-top:20px}
+.monitoring-note{font-size:12px;margin:16px 4px;line-height:1.6}
+#page-monitoring .panel-head{align-items:center}
+#page-monitoring td{vertical-align:top}
+#page-monitoring .badge{white-space:nowrap}
