@@ -162,10 +162,10 @@ function getDashboard(session) {
       customerId:c.customerId, name:c.name, meterId:c.meterId, mode,
       tariffRpPerKwh:Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH),
       powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,2),
-      costMonthRp:Math.round(costMonth), latest:latest ? normalizeReading_(latest) : null,
+      costMonthRp:round_(costMonth,2), latest:latest ? normalizeReading_(latest) : null,
       online:!!online, tokenBalanceRp:balance,
       estimatedDaysLeft: mode === 'PRABAYAR' && dailyCost > 0 ? round_(balance/dailyCost,1) : null,
-      dailyCostRp:Math.round(dailyCost)
+      dailyCostRp:round_(dailyCost,2)
     };
   });
   const ids = selected.map(c=>c.customerId);
