@@ -267,9 +267,12 @@ function doPost(e) {
         timestamp,customerId,deviceId,voltage,current,power,energy,
         frequency,pf,String(body.source||'ESP32').slice(0,40),receivedAt
       ]);
-      // Format tampilan dua desimal; nilai sensor asli tetap disimpan dengan presisi penuh.
+      // Format tampilan: V/A/W/Hz/PF dua desimal, energi kWh tiga desimal.
+      // Nilai sensor asli tetap disimpan; format ini hanya mengubah tampilan di Sheets.
       const savedRow = readingSheet.getLastRow();
-      readingSheet.getRange(savedRow, 4, 1, 6).setNumberFormat('0.00');
+      readingSheet.getRange(savedRow, 4, 1, 3).setNumberFormat('0.00'); // D:F
+      readingSheet.getRange(2, 7, savedRow - 1, 1).setNumberFormat('0.000'); // G: energyKwh, termasuk data lama
+      readingSheet.getRange(savedRow, 8, 1, 2).setNumberFormat('0.00'); // H:I
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
     return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
