@@ -255,12 +255,19 @@ function doPost(e) {
     lock.waitLock(10000);
     try {
       const receivedAt = new Date();
-      ss.getSheetByName('Data_Listrik').appendRow([
+      const readingSheet = ss.getSheetByName('Data_Listrik');
+      const existing = getRows_('Data_Listrik').filter(r => String(r.customerId) === customerId && String(r.meterId) === deviceId)
+        .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp));
+      const previous = existing[0];
+      if (previous && energy + 0.0005 < Number(previous.energyKwh || 0)) {
+        logIncident_(customerId, deviceId, 'ENERGY_COUNTER_DROP', 'WARNING',
+          'Energi kumulatif turun dari '+Number(previous.energyKwh||0)+' menjadi '+energy+' kWh. Periksa reset meter atau urutan data.', '');
+      }
+      readingSheet.appendRow([
         timestamp,customerId,deviceId,voltage,current,power,energy,
         frequency,pf,String(body.source||'ESP32').slice(0,40),receivedAt
       ]);
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
-      if (energy < 0) logIncident_(customerId, deviceId, 'INVALID_ENERGY', 'CRITICAL', 'Energi kumulatif bernilai negatif.', '');
     } finally { lock.releaseLock(); }
     return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
   } catch(err) {
