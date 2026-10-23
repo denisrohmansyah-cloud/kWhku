@@ -7,7 +7,7 @@ const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'shor
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const dLabel=k=>dText(k+'T00:00:00');
 const CFG=window.KWHKU_CONFIG||{},DEMO=!CFG.API_URL;
-let session=null,customers=[],daily=[],tokens=[],selId='',shown=new Date();shown.setDate(1);
+let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],connections:[],incidents:[],devices:[]},selId='',shown=new Date();shown.setDate(1);
 
 function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3500)}
 async function api(fn,...args){
@@ -42,7 +42,7 @@ $('logout').onclick=()=>{session=null;customers=[];daily=[];tokens=[];$('passwor
 $('mobileMenu').onclick=()=>$('sidebar').classList.toggle('open');
 
 // ---- Navigasi
-const titles={dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],customers:['Data Pelanggan','Kelola pelanggan terdaftar']};
+const titles={dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],monitoring:['Monitoring Teknis','Pembacaan sensor, status koneksi, dan gangguan'],customers:['Data Pelanggan','Kelola pelanggan terdaftar']};
 function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));$('page-'+p).classList.add('active');
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
@@ -57,7 +57,13 @@ async function refresh(){
   customers=(res.customers||[]).filter(c=>String(c.mode||'').toUpperCase()==='PASCABAYAR');const allowed=new Set(customers.map(c=>c.customerId));daily=(res.daily||[]).filter(r=>allowed.has(r.customerId));
   if(!admin()&&!customers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun ini bukan pelanggan pascabayar yang terdaftar.');}
   tokens=[];
-  renderAll()}
+  try {
+    const mon=await api('getMonitoring',session,150);
+    if(mon?.ok) monitoring=mon;
+    else console.warn('Monitoring tidak tersedia:',mon?.message||'API belum diperbarui');
+  } catch(err) { console.warn('Gagal memuat monitoring:',err); }
+  renderAll()
+}
 
 // ---- Render
 function renderAll(){if(!session)return;
@@ -80,7 +86,7 @@ function renderAll(){if(!session)return;
   $('meterNote').textContent=admin()?'Meter terhubung':'Meter '+(c?.meterId||'');
   $('statusBadge').textContent=admin()?'● '+on+' online':!c?.online?'● Offline':heavy?'● Beban tinggi':'● Normal';
   $('statusBadge').className='badge '+(!admin()&&(!c?.online||heavy)?'red':'');
-  renderChart();renderRecent();renderHistory();renderCalendar();renderCustomers();renderTokens()}
+  renderChart();renderRecent();renderHistory();renderCalendar();renderCustomers();renderTokens();renderMonitoring()}
 function renderChart(){const ds=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);ds.push(dk(d))}
   const rs=rows(),v=ds.map(k=>rs.filter(r=>r.date===k).reduce((a,r)=>a+r.kwh,0)),mx=Math.max(0.001,...v);
   $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmtEnergy(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('')}
@@ -102,6 +108,31 @@ function renderCustomers(){if(!admin())return;const q=$('customerSearch').value.
 $('customerSearch').oninput=renderCustomers;
 $('customerTable').onclick=e=>{const id=e.target.dataset.view;if(!id)return;showPage('history');selId=id;$('historySearch').value=id;renderAll();toast('Riwayat '+cust(id).name)};
 function renderTokens(){}
+
+function renderMonitoring(){
+  const readings=(monitoring.readings||[]).filter(r=>admin()||r.customerId===session?.customerId);
+  const connections=(monitoring.connections||[]).filter(r=>admin()||r.customerId===session?.customerId);
+  const incidents=(monitoring.incidents||[]).filter(r=>admin()||r.customerId===session?.customerId);
+  const devices=(monitoring.devices||[]).filter(r=>admin()||r.customerId===session?.customerId);
+  const latest=readings[0];
+  const status=devices.find(d=>!latest||d.meterId===latest.meterId)?.status || (customers.find(c=>c.customerId===session?.customerId)?.online?'ONLINE':'OFFLINE');
+  const timeLabel=v=>v?new Date(v).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'medium'}):'—';
+  $('monStatus').innerHTML='<span class="badge '+(status==='ONLINE'?'':'amber')+'">'+esc(status)+'</span>';
+  $('monLastSeen').textContent=latest?'Terakhir diterima '+timeLabel(latest.receivedAt||latest.timestamp):'Belum ada data';
+  $('monVoltage').textContent=latest?fmt(latest.voltageV)+' V':'— V';
+  $('monCurrent').textContent=latest?fmt(latest.currentA)+' A':'— A';
+  $('monEnergy').textContent=latest?fmtEnergy(latest.energyKwh)+' kWh':'— kWh';
+  $('monPower').textContent='Daya '+(latest?fmt(latest.powerW)+' W':'— W');
+  $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmt(r.powerW)+' W</td><td>'+fmt(r.voltageV)+' V</td><td>'+fmt(r.currentA)+' A</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada data pembacaan.</td></tr>';
+  $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
+  $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
+}
+$('exportMonitoring').onclick=()=>{
+  const readings=(monitoring.readings||[]).filter(r=>admin()||r.customerId===session?.customerId);
+  const data=[['timestamp','receivedAt','customerId','meterId','energyKwh','powerW','voltageV','currentA'],...readings.map(r=>[r.timestamp,r.receivedAt||'',r.customerId,r.meterId,r.energyKwh,r.powerW,r.voltageV,r.currentA])];
+  const csv=data.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();URL.revokeObjectURL(a.href);
+};
 
 // ---- Modal admin
 function modal(html){$('modalRoot').innerHTML=`<div class="modal-backdrop" id="bd"><div class="modal">${html}</div></div>`;$('bd').onclick=e=>{if(e.target.id==='bd')$('modalRoot').innerHTML=''}}
