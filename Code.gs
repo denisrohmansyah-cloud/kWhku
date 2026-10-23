@@ -161,7 +161,7 @@ function getDashboard(session) {
     return {
       customerId:c.customerId, name:c.name, meterId:c.meterId, mode,
       tariffRpPerKwh:Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH),
-      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,3),
+      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,2),
       costMonthRp:Math.round(costMonth), latest:latest ? normalizeReading_(latest) : null,
       online:!!online, tokenBalanceRp:balance,
       estimatedDaysLeft: mode === 'PRABAYAR' && dailyCost > 0 ? round_(balance/dailyCost,1) : null,
@@ -267,6 +267,9 @@ function doPost(e) {
         timestamp,customerId,deviceId,voltage,current,power,energy,
         frequency,pf,String(body.source||'ESP32').slice(0,40),receivedAt
       ]);
+      // Format tampilan dua desimal; nilai sensor asli tetap disimpan dengan presisi penuh.
+      const savedRow = readingSheet.getLastRow();
+      readingSheet.getRange(savedRow, 4, 1, 6).setNumberFormat('0.00');
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
     return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
@@ -421,6 +424,7 @@ function resolveLatestIncident_(customerId,meterId,eventType,when) {
 }
 
 function normalizeReading_(r) {
+  // Jangan membulatkan nilai mentah di backend: perhitungan energi memakai presisi asli sensor.
   return {timestamp:new Date(r.timestamp).toISOString(),customerId:r.customerId,meterId:r.meterId,
     voltageV:Number(r.voltageV||0),currentA:Number(r.currentA||0),powerW:Number(r.powerW||0),
     energyKwh:Number(r.energyKwh||0),frequencyHz:Number(r.frequencyHz||0),powerFactor:Number(r.powerFactor||0),
@@ -471,5 +475,5 @@ function dailyUsage_(readingsDesc,tariff,customerId){
     const d=Number(asc[i].energyKwh)-Number(asc[i-1].energyKwh); if(!(d>=0)) continue;
     const k=Utilities.formatDate(new Date(asc[i].timestamp),CONFIG.TIME_ZONE,'yyyy-MM-dd'); m[k]=(m[k]||0)+d;
   }
-  return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:round_(m[k],3),costRp:Math.round(m[k]*tariff)}));
+  return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:round_(m[k],2),costRp:round_(m[k]*tariff,2)}));
 }
