@@ -86,7 +86,7 @@ function renderAll(){if(!session)return;
   $('meterNote').textContent=admin()?'Meter terhubung':'Meter '+(c?.meterId||'');
   $('statusBadge').textContent=admin()?'● '+on+' online':!c?.online?'● Offline':heavy?'● Beban tinggi':'● Normal';
   $('statusBadge').className='badge '+(!admin()&&(!c?.online||heavy)?'red':'');
-  renderChart();renderRecent();renderHistory();renderCalendar();renderCustomers();renderTokens();renderMonitoring()}
+  renderChart();renderRecent();renderHistory();renderPeriodRecap();renderCalendar();renderCustomers();renderTokens();renderMonitoring()}
 function renderChart(){const ds=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);ds.push(dk(d))}
   const rs=rows(),v=ds.map(k=>rs.filter(r=>r.date===k).reduce((a,r)=>a+r.kwh,0)),mx=Math.max(0.001,...v);
   $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmtEnergy(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('')}
@@ -95,6 +95,33 @@ function renderHistory(){const q=$('historySearch').value.toLowerCase(),f=$('his
   const d=sorted().filter(r=>(r.date+' '+r.customerId+' '+cust(r.customerId).name).toLowerCase().includes(q)&&(f==='all'||(f==='high')===high(r)));
   $('historyTable').innerHTML=d.map(r=>`<tr><td>${dLabel(r.date)}</td><td class="admin-col ${admin()?'':'hidden'}">${esc(r.customerId)} · ${esc(cust(r.customerId).name)}</td><td><b>${fmtEnergy(r.kwh)}</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||`<tr><td colspan="${admin()?5:4}" class="empty">Tidak ada data.</td></tr>`}
 $('historySearch').oninput=renderHistory;$('historyFilter').onchange=renderHistory;
+function renderPeriodRecap(){
+  const mode=$('recapPeriod')?.value||'week';
+  const source=rows().filter(r=>r.date&&Number.isFinite(Number(r.kwh)));
+  const buckets={};
+  source.forEach(r=>{
+    const d=new Date(r.date+'T12:00:00');
+    let key,label;
+    if(mode==='month'){
+      key=r.date.slice(0,7);
+      label=d.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+    }else{
+      const monday=new Date(d);
+      const offset=(monday.getDay()+6)%7;
+      monday.setDate(monday.getDate()-offset);
+      const sunday=new Date(monday);sunday.setDate(monday.getDate()+6);
+      key=dk(monday);
+      label=dLabel(dk(monday))+' – '+dLabel(dk(sunday));
+    }
+    if(!buckets[key])buckets[key]={label,kwh:0,cost:0};
+    buckets[key].kwh+=Number(r.kwh)||0;
+    buckets[key].cost+=Number(r.costRp)||0;
+  });
+  const entries=Object.entries(buckets).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,mode==='month'?12:10);
+  $('periodRecapTable').innerHTML=entries.map(([,v])=>'<tr><td>'+esc(v.label)+'</td><td><b>'+fmtEnergy(v.kwh)+'</b></td><td>'+rp(v.cost)+'</td></tr>').join('')||'<tr><td colspan="3" class="empty">Belum ada data pemakaian untuk direkap.</td></tr>';
+}
+$('recapPeriod').onchange=renderPeriodRecap;
+
 function renderCalendar(){const y=shown.getFullYear(),m=shown.getMonth(),first=new Date(y,m,1).getDay(),n=new Date(y,m+1,0).getDate(),by={};
   rows().forEach(r=>{by[r.date]=(by[r.date]||0)+r.kwh});$('monthTitle').textContent=shown.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
   let h=['Min','Sen','Sel','Rab','Kam','Jum','Sab'].map(d=>`<div class="day-name">${d}</div>`).join('')+'<div></div>'.repeat(first);
