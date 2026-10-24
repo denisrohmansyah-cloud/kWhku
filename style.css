@@ -16,3 +16,6 @@
 #page-monitoring .panel-head{align-items:center}
 #page-monitoring td{vertical-align:top}
 #page-monitoring .badge{white-space:nowrap}
+
+/* Rekap mingguan/bulanan */
+.period-recap{margin-top:20px}.period-recap .panel-head select{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px 12px;font-size:12px}.period-note{font-size:11px;color:var(--muted);padding:0 21px 16px;margin:0;line-height:1.5}
