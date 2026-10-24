@@ -58,7 +58,7 @@ async function refresh(){
   if(!admin()&&!customers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun ini bukan pelanggan pascabayar yang terdaftar.');}
   tokens=[];
   try {
-    const mon=await api('getMonitoring',session,150);
+    const mon=await api('getMonitoring',session,500);
     if(mon?.ok) monitoring=mon;
     else console.warn('Monitoring tidak tersedia:',mon?.message||'API belum diperbarui');
   } catch(err) { console.warn('Gagal memuat monitoring:',err); }
@@ -144,10 +144,11 @@ function renderTokens(){}
 function renderMonitoring(){
   const monitorStart=$('monitorStart')?.value||'',monitorEnd=$('monitorEnd')?.value||'';
   const allVisible=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||String(r.timestamp).slice(0,10)>=monitorStart)&&(!monitorEnd||String(r.timestamp).slice(0,10)<=monitorEnd));
-  const readings=allVisible.slice(0,150);
+  const readings=allVisible.slice(0,500);
   const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
-  const gaps=stamps.slice(1).filter((t,i)=>t-stamps[i]>90000).length;
-  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'');
+  const intervals=stamps.slice(1).map((t,i)=>t-stamps[i]).filter(t=>t>0),gaps=intervals.filter(t=>t>90000).length;
+  const avgInterval=intervals.length?intervals.reduce((sum,t)=>sum+t,0)/intervals.length/1000:0;
+  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?fmt(avgInterval)+' detik':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'');
   const connections=(monitoring.connections||[]).filter(r=>admin()||r.customerId===session?.customerId);
   const incidents=(monitoring.incidents||[]).filter(r=>admin()||r.customerId===session?.customerId);
   const devices=(monitoring.devices||[]).filter(r=>admin()||r.customerId===session?.customerId);
@@ -190,7 +191,7 @@ $('addCustomer').onclick=()=>openModal('customer');
 function printRecap(){const cs=admin()?customers:customers.filter(c=>c.customerId===session.customerId);
   $('printArea').innerHTML=`<h1>Rekap kWh-Ku</h1><p>Dicetak: ${new Date().toLocaleString('id-ID')} · Oleh: ${esc(session.name)}${selId?' · Pelanggan '+esc(selId):''}</p>
   <h3>Ringkasan bulan ini</h3><table><tr><th>ID</th><th>Nama</th><th>Daya</th><th>Energi (kWh)</th><th>Biaya (Rp)</th><th>Tarif (Rp/kWh)</th></tr>${cs.map(c=>`<tr><td>${esc(c.customerId)}</td><td>${esc(c.name)}</td><td>${fmt(c.powerVa)} VA</td><td>${fmtEnergy(c.energyMonthKwh)}</td><td>${rp(c.costMonthRp)}</td><td>${rp(c.tariffRpPerKwh)}</td></tr>`).join('')}</table>
-  <h3>Riwayat harian</h3><table><tr><th>Tanggal</th><th>Pelanggan</th><th>kWh</th><th>Biaya (Rp)</th></tr>${sorted().slice(0,93).map(r=>`<tr><td>${dLabel(r.date)}</td><td>${esc(r.customerId)} ${esc(cust(r.customerId).name)}</td><td>${fmt(r.kwh)}</td><td>${rp(r.costRp)}</td></tr>`).join('')}</table>`;
+  <h3>Riwayat harian</h3><table><tr><th>Tanggal</th><th>Pelanggan</th><th>kWh</th><th>Biaya (Rp)</th></tr>${historyRows().slice(0,500).map(r=>`<tr><td>${dLabel(r.date)}</td><td>${esc(r.customerId)} ${esc(cust(r.customerId).name)}</td><td>${fmt(r.kwh)}</td><td>${rp(r.costRp)}</td></tr>`).join('')}</table>`;
   window.print()}
 $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...historyRows().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
