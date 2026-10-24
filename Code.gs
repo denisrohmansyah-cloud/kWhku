@@ -161,7 +161,7 @@ function getDashboard(session) {
     return {
       customerId:c.customerId, name:c.name, meterId:c.meterId, mode,
       tariffRpPerKwh:Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH),
-      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,2),
+      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,3),
       costMonthRp:round_(costMonth,2), latest:latest ? normalizeReading_(latest) : null,
       online:!!online, tokenBalanceRp:balance,
       estimatedDaysLeft: mode === 'PRABAYAR' && dailyCost > 0 ? round_(balance/dailyCost,1) : null,
@@ -273,6 +273,8 @@ function doPost(e) {
       readingSheet.getRange(savedRow, 4, 1, 3).setNumberFormat('0.00'); // D:F
       readingSheet.getRange(2, 7, savedRow - 1, 1).setNumberFormat('0.000'); // G: energyKwh, termasuk data lama
       readingSheet.getRange(savedRow, 8, 1, 2).setNumberFormat('0.00'); // H:I
+      // Sembunyikan metadata teknis yang tidak digunakan pada tabel penelitian; data tetap tersimpan.
+      if (!readingSheet.isColumnHiddenByUser(8)) readingSheet.hideColumns(8, 4); // H:K
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
     return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
@@ -492,5 +494,5 @@ function dailyUsage_(readingsDesc,tariff,customerId){
       cursor=end;
     }
   }
-  return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:round_(m[k],2),costRp:round_(m[k]*tariff,2)}));
+  return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:round_(m[k],3),costRp:round_(m[k]*tariff,2)}));
 }
