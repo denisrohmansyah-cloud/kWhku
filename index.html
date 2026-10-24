@@ -6,7 +6,7 @@
 <title>kWh-Ku — Sistem Monitoring Listrik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=recap-20261024">
+<link rel="stylesheet" href="style.css?v=research-features-20261024">
 </head>
 <body>
 <div id="loginView" class="login-wrap">
@@ -57,7 +57,7 @@
         <article class="stat"><div class="stat-head" id="tokenStatLabel">Estimasi tagihan berjalan <span class="stat-icon">▤</span></div><strong id="tokenStat">6,2 hari</strong><div class="foot warning">Tarif sesuai golongan pelanggan</div></article>
       </div>
       <div class="grid-two">
-        <div class="panel"><div class="panel-head"><div><h3>Grafik konsumsi energi</h3><p>Penggunaan listrik selama 7 hari terakhir</p></div><button class="text-btn" data-goto="history">Lihat riwayat ↗</button></div><div class="chart" id="chart"></div></div>
+        <div class="panel"><div class="panel-head"><div><h3>Grafik konsumsi energi</h3><p id="chartSubtitle">Pemakaian energi selama 7 hari terakhir</p></div><select id="chartMode" aria-label="Jenis grafik"><option value="daily">Pemakaian harian</option><option value="cumulative">Energi kumulatif</option></select></div><div class="chart" id="chart"></div><p id="chartSummary" class="chart-summary">Menyiapkan ringkasan data…</p><button class="text-btn" data-goto="history">Lihat riwayat ↗</button></div>
         <div class="panel"><div class="panel-head"><div><h3>Status penggunaan</h3><p>Informasi kondisi listrik saat ini</p></div><span class="badge" id="statusBadge">● Normal</span></div>
           <div class="usage-status"><div class="status-icon">⚡</div><div class="status-copy"><b>Status meter</b><small id="meterNote">Meter terhubung</small></div><div class="status-value positive" id="meterStatus">Aktif<small>Online</small></div></div>
           <div class="usage-status"><div class="status-icon">⌁</div><div class="status-copy"><b>Konsumsi hari ini</b><small>Akumulasi energi</small></div><div class="status-value" id="todayKwh">4,8 kWh<small>Hari ini</small></div></div>
@@ -71,7 +71,7 @@
       <div class="panel"><div class="panel-head"><div><h3>Kalender pemakaian listrik</h3><p>Pilih tanggal untuk melihat aktivitas konsumsi energi.</p></div><span class="badge">Data Google Sheets</span></div><div class="calendar-head"><button id="prevMonth">←</button><b id="monthTitle"></b><button id="nextMonth">→</button></div><div class="calendar-grid" id="calendarGrid"></div><div class="day-detail" id="dayDetail">Ketuk tanggal untuk melihat pemakaian dan biaya harian.</div><p class="sub" style="font-size:12px;margin:18px 0 0">● Titik merah menandakan terdapat data penggunaan pada tanggal tersebut. Kalender menandai tanggal yang memiliki pembacaan tersimpan.</p></div>
     </section>
     <section id="page-history" class="section">
-      <div class="panel table-panel"><div class="panel-head"><div><h3>Riwayat penggunaan listrik</h3><p id="historySub">Pantau konsumsi energi dan biaya berdasarkan tanggal.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="printHistory">🖨 Cetak rekap</button><button class="secondary" id="exportHistory">⇩ Ekspor CSV</button></div></div><div class="filter-row" style="padding:0 20px;margin-top:18px"><input id="historySearch" placeholder="Cari tanggal / pelanggan..." /><select id="historyFilter"><option value="all">Semua status</option><option value="normal">Normal</option><option value="high">Pemakaian tinggi</option></select></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th class="admin-col hidden">Pelanggan</th><th>Energi (kWh)</th><th>Biaya (Rp)</th><th>Status</th></tr></thead><tbody id="historyTable"></tbody></table></div></div>
+      <div class="panel table-panel"><div class="panel-head"><div><h3>Riwayat penggunaan listrik</h3><p id="historySub">Pantau konsumsi energi dan biaya berdasarkan tanggal.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="printHistory">🖨 Cetak rekap</button><button class="secondary" id="exportHistory">⇩ Ekspor CSV</button></div></div><div class="filter-row" style="padding:0 20px;margin-top:18px"><input id="historySearch" placeholder="Cari tanggal / pelanggan..." /><label class="date-filter">Dari <input id="historyStart" type="date" aria-label="Tanggal mulai" /></label><label class="date-filter">Sampai <input id="historyEnd" type="date" aria-label="Tanggal akhir" /></label><select id="historyFilter"><option value="all">Semua status</option><option value="normal">Normal</option><option value="high">Pemakaian tinggi</option></select></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th class="admin-col hidden">Pelanggan</th><th>Energi (kWh)</th><th>Biaya (Rp)</th><th>Status</th></tr></thead><tbody id="historyTable"></tbody></table></div></div>
       <div class="panel table-panel period-recap">
         <div class="panel-head">
           <div><h3>Rekap Konsumsi Energi</h3><p>Ringkasan energi dan estimasi biaya berdasarkan data harian yang tersedia.</p></div>
@@ -90,7 +90,7 @@
       </div>
       <div class="panel table-panel">
         <div class="panel-head"><div><h3>Riwayat pembacaan sensor</h3><p>Energi kumulatif, daya, tegangan, arus, timestamp, dan waktu diterima server.</p></div><button class="secondary" id="exportMonitoring">⇩ Ekspor CSV</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
+        <div class="filter-row monitoring-filter" style="padding:0 20px"><label class="date-filter">Dari <input id="monitorStart" type="date" aria-label="Tanggal mulai data sensor" /></label><label class="date-filter">Sampai <input id="monitorEnd" type="date" aria-label="Tanggal akhir data sensor" /></label></div><div id="dataQuality" class="data-quality" role="status"></div><div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
       </div>
       <div class="panel table-panel monitoring-panel">
         <div class="panel-head"><div><h3>Riwayat koneksi</h3><p>Perubahan status yang tercatat oleh server.</p></div></div>
@@ -108,8 +108,8 @@
   </main>
 </div>
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
-<script src="config.js?v=recap-20261024"></script>
-<script src="demo.js?v=recap-20261024"></script>
-<script src="app.js?v=recap-20261024"></script>
+<script src="config.js?v=research-features-20261024"></script>
+<script src="demo.js?v=research-features-20261024"></script>
+<script src="app.js?v=research-features-20261024"></script>
 </body>
 </html>
