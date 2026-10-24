@@ -19,3 +19,6 @@
 
 /* Rekap mingguan/bulanan */
 .period-recap{margin-top:20px}.period-recap .panel-head select{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px 12px;font-size:12px}.period-note{font-size:11px;color:var(--muted);padding:0 21px 16px;margin:0;line-height:1.5}
+
+/* Fitur penelitian: filter periode, kualitas data, grafik */
+.date-filter{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}.date-filter input{border:1px solid var(--line);border-radius:9px;padding:9px;background:#fff;color:var(--ink);min-width:135px}.chart-summary{font-size:12px;color:var(--muted);margin:12px 0 0}.data-quality{padding:10px 20px 14px;font-size:12px;color:var(--muted);line-height:1.6}.monitoring-filter{margin-top:14px}
