@@ -6,7 +6,7 @@
 <title>kWh-Ku — Sistem Monitoring Listrik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=precision-20261024">
+<link rel="stylesheet" href="style.css?v=recap-20261024">
 </head>
 <body>
 <div id="loginView" class="login-wrap">
@@ -72,6 +72,14 @@
     </section>
     <section id="page-history" class="section">
       <div class="panel table-panel"><div class="panel-head"><div><h3>Riwayat penggunaan listrik</h3><p id="historySub">Pantau konsumsi energi dan biaya berdasarkan tanggal.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="printHistory">🖨 Cetak rekap</button><button class="secondary" id="exportHistory">⇩ Ekspor CSV</button></div></div><div class="filter-row" style="padding:0 20px;margin-top:18px"><input id="historySearch" placeholder="Cari tanggal / pelanggan..." /><select id="historyFilter"><option value="all">Semua status</option><option value="normal">Normal</option><option value="high">Pemakaian tinggi</option></select></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th class="admin-col hidden">Pelanggan</th><th>Energi (kWh)</th><th>Biaya (Rp)</th><th>Status</th></tr></thead><tbody id="historyTable"></tbody></table></div></div>
+      <div class="panel table-panel period-recap">
+        <div class="panel-head">
+          <div><h3>Rekap Konsumsi Energi</h3><p>Ringkasan energi dan estimasi biaya berdasarkan data harian yang tersedia.</p></div>
+          <select id="recapPeriod" aria-label="Pilih periode rekap"><option value="week">Mingguan</option><option value="month">Bulanan</option></select>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Periode</th><th>Energi (kWh)</th><th>Estimasi biaya (Rp)</th></tr></thead><tbody id="periodRecapTable"><tr><td colspan="3" class="empty">Memuat rekap...</td></tr></tbody></table></div>
+        <p class="period-note">Rekap dihitung dari data pemakaian harian yang tersedia; periode yang belum memiliki data lengkap dapat menampilkan nilai sementara.</p>
+      </div>
     </section>
     <section id="page-monitoring" class="section">
       <div class="stats monitoring-stats">
@@ -100,8 +108,8 @@
   </main>
 </div>
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
-<script src="config.js?v=precision-20261024"></script>
-<script src="demo.js?v=precision-20261024"></script>
-<script src="app.js?v=precision-20261024"></script>
+<script src="config.js?v=recap-20261024"></script>
+<script src="demo.js?v=recap-20261024"></script>
+<script src="app.js?v=recap-20261024"></script>
 </body>
 </html>
