@@ -88,16 +88,21 @@ function renderAll(){if(!session)return;
   $('statusBadge').className='badge '+(!admin()&&(!c?.online||heavy)?'red':'');
   renderChart();renderRecent();renderHistory();renderPeriodRecap();renderCalendar();renderCustomers();renderTokens();renderMonitoring()}
 function renderChart(){const ds=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);ds.push(dk(d))}
-  const rs=rows(),v=ds.map(k=>rs.filter(r=>r.date===k).reduce((a,r)=>a+r.kwh,0)),mx=Math.max(0.001,...v);
-  $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmtEnergy(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('')}
+  const rs=rows(),mode=$('chartMode')?.value||'daily';let v=ds.map(k=>rs.filter(r=>r.date===k).reduce((a,r)=>a+r.kwh,0));
+  if(mode==='cumulative'){let total=0;v=v.map(x=>(total+=x))}
+  const mx=Math.max(0.001,...v);$('chartSubtitle').textContent=mode==='daily'?'Pemakaian energi selama 7 hari terakhir':'Akumulasi energi selama 7 hari terakhir';
+  $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmtEnergy(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('');
+  $('chartSummary').textContent=(mode==='daily'?'Total pemakaian 7 hari: ':'Akumulasi pemakaian 7 hari: ')+fmtEnergy(v[v.length-1]||0)+' kWh';
+}
 function renderRecent(){$('recentTable').innerHTML=sorted().slice(0,5).map(r=>`<tr><td>${dLabel(r.date)}</td><td><b>${fmtEnergy(r.kwh)} kWh</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada data dari ESP32.</td></tr>'}
-function renderHistory(){const q=$('historySearch').value.toLowerCase(),f=$('historyFilter').value;
-  const d=sorted().filter(r=>(r.date+' '+r.customerId+' '+cust(r.customerId).name).toLowerCase().includes(q)&&(f==='all'||(f==='high')===high(r)));
+function historyRows(){const q=$('historySearch').value.toLowerCase(),f=$('historyFilter').value,start=$('historyStart').value,end=$('historyEnd').value;
+  return sorted().filter(r=>(r.date+' '+r.customerId+' '+cust(r.customerId).name).toLowerCase().includes(q)&&(!start||r.date>=start)&&(!end||r.date<=end)&&(f==='all'||(f==='high')===high(r)));}
+function renderHistory(){const d=historyRows();
   $('historyTable').innerHTML=d.map(r=>`<tr><td>${dLabel(r.date)}</td><td class="admin-col ${admin()?'':'hidden'}">${esc(r.customerId)} · ${esc(cust(r.customerId).name)}</td><td><b>${fmtEnergy(r.kwh)}</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||`<tr><td colspan="${admin()?5:4}" class="empty">Tidak ada data.</td></tr>`}
-$('historySearch').oninput=renderHistory;$('historyFilter').onchange=renderHistory;
+$('historySearch').oninput=renderHistory;$('historyFilter').onchange=renderHistory;$('historyStart').onchange=renderHistory;$('historyEnd').onchange=renderHistory;$('chartMode').onchange=renderChart;
 function renderPeriodRecap(){
   const mode=$('recapPeriod')?.value||'week';
-  const source=rows().filter(r=>r.date&&Number.isFinite(Number(r.kwh)));
+  const source=historyRows().filter(r=>r.date&&Number.isFinite(Number(r.kwh)));
   const buckets={};
   source.forEach(r=>{
     const d=new Date(r.date+'T12:00:00');
@@ -137,7 +142,12 @@ $('customerTable').onclick=e=>{const id=e.target.dataset.view;if(!id)return;show
 function renderTokens(){}
 
 function renderMonitoring(){
-  const readings=(monitoring.readings||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,10);
+  const monitorStart=$('monitorStart')?.value||'',monitorEnd=$('monitorEnd')?.value||'';
+  const allVisible=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||String(r.timestamp).slice(0,10)>=monitorStart)&&(!monitorEnd||String(r.timestamp).slice(0,10)<=monitorEnd));
+  const readings=allVisible.slice(0,150);
+  const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
+  const gaps=stamps.slice(1).filter((t,i)=>t-stamps[i]>90000).length;
+  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'');
   const connections=(monitoring.connections||[]).filter(r=>admin()||r.customerId===session?.customerId);
   const incidents=(monitoring.incidents||[]).filter(r=>admin()||r.customerId===session?.customerId);
   const devices=(monitoring.devices||[]).filter(r=>admin()||r.customerId===session?.customerId);
@@ -155,11 +165,13 @@ function renderMonitoring(){
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
 }
 $('exportMonitoring').onclick=()=>{
-  const readings=(monitoring.readings||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,10);
+  const start=$('monitorStart').value,end=$('monitorEnd').value;
+  const readings=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!start||String(r.timestamp).slice(0,10)>=start)&&(!end||String(r.timestamp).slice(0,10)<=end));
   const data=[['timestamp','receivedAt','customerId','meterId','energyKwh','powerW','voltageV','currentA'],...readings.map(r=>[r.timestamp,r.receivedAt||'',r.customerId,r.meterId,r.energyKwh,r.powerW,r.voltageV,r.currentA])];
   const csv=data.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();URL.revokeObjectURL(a.href);
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV monitoring diunduh');
 };
+$('monitorStart').onchange=renderMonitoring;$('monitorEnd').onchange=renderMonitoring;
 
 // ---- Modal admin
 function modal(html){$('modalRoot').innerHTML=`<div class="modal-backdrop" id="bd"><div class="modal">${html}</div></div>`;$('bd').onclick=e=>{if(e.target.id==='bd')$('modalRoot').innerHTML=''}}
@@ -181,7 +193,7 @@ function printRecap(){const cs=admin()?customers:customers.filter(c=>c.customerI
   <h3>Riwayat harian</h3><table><tr><th>Tanggal</th><th>Pelanggan</th><th>kWh</th><th>Biaya (Rp)</th></tr>${sorted().slice(0,93).map(r=>`<tr><td>${dLabel(r.date)}</td><td>${esc(r.customerId)} ${esc(cust(r.customerId).name)}</td><td>${fmt(r.kwh)}</td><td>${rp(r.costRp)}</td></tr>`).join('')}</table>`;
   window.print()}
 $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
-$('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...sorted().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
+$('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...historyRows().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV diunduh')};
 setInterval(()=>{if(session)refresh().catch(e=>console.warn(e))},CFG.REFRESH_MS||30000);
