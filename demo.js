@@ -13,7 +13,7 @@ window.DemoAPI=(()=>{
             {createdAt:new Date(end-3*864e5).toISOString(),customerId:'PLG-003',name:'Agus Pratama',amountRp:50000,tokenCode:'7302-1184-9961-0275-3341',note:'Saldo awal'}];
   const code=()=>Array.from({length:5},()=>pad(Math.floor(rnd()*100))+pad(Math.floor(rnd()*100))).join('-');
   const daily=(rs,c)=>{const m={};for(let i=1;i<rs.length;i++){const d=rs[i].energyKwh-rs[i-1].energyKwh;if(d<0)continue;const k=dk(new Date(rs[i].timestamp));m[k]=(m[k]||0)+d}
-    return Object.keys(m).sort().map(k=>({customerId:c.customerId,date:k,kwh:+m[k].toFixed(2),costRp:+(m[k]*c.tariffRpPerKwh).toFixed(2)}))};
+    return Object.keys(m).sort().map(k=>({customerId:c.customerId,date:k,kwh:+m[k].toFixed(3),costRp:+(m[k]*c.tariffRpPerKwh).toFixed(2)}))};
   const me=s=>s&&sess[s.token];
   const bad={ok:false,message:'Sesi tidak valid. Silakan masuk kembali.'};
   return {
@@ -24,7 +24,7 @@ window.DemoAPI=(()=>{
       const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);let dl=[];const out=sel.map(c=>{
         const rs=R.filter(r=>r.customerId===c.customerId),L=rs[rs.length-1],mr=rs.filter(r=>new Date(r.timestamp)>=ms),e=mr.length?L.energyKwh-mr[0].energyKwh:0,d=daily(rs,c);dl=dl.concat(d);
         const l7=d.slice(-7),dc=l7.length?l7.reduce((a,x)=>a+x.costRp,0)/l7.length:0;
-        return {...c,energyMonthKwh:+e.toFixed(2),costMonthRp:+(e*c.tariffRpPerKwh).toFixed(2),latest:L,online:true,estimatedDaysLeft:c.mode==='PASCABAYAR'&&dc>0?+(c.tokenBalanceRp/dc).toFixed(1):null,dailyCostRp:Math.round(dc)}});
+        return {...c,energyMonthKwh:+e.toFixed(3),costMonthRp:+(e*c.tariffRpPerKwh).toFixed(2),latest:L,online:true,estimatedDaysLeft:c.mode==='PASCABAYAR'&&dc>0?+(c.tokenBalanceRp/dc).toFixed(1):null,dailyCostRp:Math.round(dc)}});
       return {ok:true,role:u.role,customers:out,readings:[],daily:dl,serverTime:new Date().toISOString()}},
     getTokens(s){const u=me(s);if(!u)return bad;return {ok:true,rows:TK.filter(t=>u.role==='ADMIN'||t.customerId===u.customerId).slice().reverse()}},
     adminCreateCustomer(s,p){const u=me(s);if(!u||u.role!=='ADMIN')return {ok:false,message:'Akses admin diperlukan.'};
