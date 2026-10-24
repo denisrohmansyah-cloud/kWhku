@@ -144,7 +144,7 @@ function renderTokens(){}
 function renderMonitoring(){
   const monitorStart=$('monitorStart')?.value||'',monitorEnd=$('monitorEnd')?.value||'';
   const allVisible=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||String(r.timestamp).slice(0,10)>=monitorStart)&&(!monitorEnd||String(r.timestamp).slice(0,10)<=monitorEnd));
-  const readings=allVisible.slice(0,500);
+  const readings=allVisible.slice(0,10);
   const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
   const intervals=stamps.slice(1).map((t,i)=>t-stamps[i]).filter(t=>t>0),gaps=intervals.filter(t=>t>90000).length;
   const avgInterval=intervals.length?intervals.reduce((sum,t)=>sum+t,0)/intervals.length/1000:0;
