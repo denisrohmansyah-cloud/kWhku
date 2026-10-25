@@ -1,7 +1,10 @@
 const $=id=>document.getElementById(id);
 const rp=n=>'Rp '+(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtEnergy=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:3,maximumFractionDigits:3});
+const num=n=>{const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
+const fmt=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtEnergy=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:3,maximumFractionDigits:3});
+const fmtCurrentMa=n=>{const v=num(n);return v===null?'—':(v*1000).toLocaleString('id-ID',{minimumFractionDigits:0,maximumFractionDigits:2})};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -52,17 +55,24 @@ function showPage(p){if(p==='customers'&&!admin())p='dashboard';
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
+let refreshInFlight=false;
 async function refresh(){
-  const res=await api('getDashboard',session);if(!res?.ok){if(/Sesi/.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
-  customers=(res.customers||[]).filter(c=>String(c.mode||'').toUpperCase()==='PASCABAYAR');const allowed=new Set(customers.map(c=>c.customerId));daily=(res.daily||[]).filter(r=>allowed.has(r.customerId));
-  if(!admin()&&!customers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun ini bukan pelanggan pascabayar yang terdaftar.');}
-  tokens=[];
-  try {
-    const mon=await api('getMonitoring',session,500);
-    if(mon?.ok) monitoring=mon;
-    else console.warn('Monitoring tidak tersedia:',mon?.message||'API belum diperbarui');
-  } catch(err) { console.warn('Gagal memuat monitoring:',err); }
-  renderAll()
+  if(!session||refreshInFlight)return;refreshInFlight=true;
+  try{
+    const res=await api('getDashboard',session);
+    if(!res?.ok){if(/Sesi/i.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
+    const nextCustomers=(Array.isArray(res.customers)?res.customers:[]).filter(c=>String(c.mode||'').toUpperCase()==='PASCABAYAR');
+    const allowed=new Set(nextCustomers.map(c=>c.customerId));
+    const nextDaily=(Array.isArray(res.daily)?res.daily:[]).filter(r=>allowed.has(r.customerId)&&r.date&&num(r.kwh)!==null&&num(r.costRp)!==null);
+    if(!admin()&&!nextCustomers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun ini bukan pelanggan pascabayar yang terdaftar.')}
+    customers=nextCustomers;daily=nextDaily;tokens=[];
+    try{const mon=await api('getMonitoring',session,500);
+      if(mon?.ok&&Array.isArray(mon.readings))monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};
+      else console.warn('Monitoring tidak tersedia:',mon?.message||'Format respons tidak sesuai');
+    }catch(err){console.warn('Gagal memuat monitoring; data terakhir yang valid dipertahankan:',err)}
+    $('liveText').textContent=DEMO?'MODE DEMO':'TERHUBUNG KE SHEETS';renderAll();
+  }catch(err){const badge=$('liveText');if(badge)badge.textContent=DEMO?'MODE DEMO':'GAGAL MEMPERBARUI';console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
+  finally{refreshInFlight=false}
 }
 
 // ---- Render
@@ -158,10 +168,10 @@ function renderMonitoring(){
   $('monStatus').innerHTML='<span class="badge '+(status==='ONLINE'?'':'amber')+'">'+esc(status)+'</span>';
   $('monLastSeen').textContent=latest?'Terakhir diterima '+timeLabel(latest.receivedAt||latest.timestamp):'Belum ada data';
   $('monVoltage').textContent=latest?fmt(latest.voltageV)+' V':'— V';
-  $('monCurrent').textContent=latest?fmt(latest.currentA)+' A':'— A';
+  $('monCurrent').textContent=latest?fmtCurrentMa(latest.currentA)+' mA':'— mA';
   $('monEnergy').textContent=latest?fmtEnergy(latest.energyKwh)+' kWh':'— kWh';
   $('monPower').textContent='Daya '+(latest?fmt(latest.powerW)+' W':'— W');
-  $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmt(r.powerW)+' W</td><td>'+fmt(r.voltageV)+' V</td><td>'+fmt(r.currentA)+' A</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada data pembacaan.</td></tr>';
+  $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmt(r.powerW)+' W</td><td>'+fmt(r.voltageV)+' V</td><td>'+fmtCurrentMa(r.currentA)+' mA</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada data pembacaan.</td></tr>';
   $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
 }
@@ -197,4 +207,4 @@ $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...historyRows().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV diunduh')};
-setInterval(()=>{if(session)refresh().catch(e=>console.warn(e))},CFG.REFRESH_MS||30000);
+setInterval(()=>{if(session)refresh().catch(()=>{})},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
