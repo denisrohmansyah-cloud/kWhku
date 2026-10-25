@@ -223,6 +223,31 @@ function adminAddTokenBalance(session, customerId, amountRp, note) {
 }
 
 /** ESP32 sends JSON: {apiKey, deviceId, customerId, timestamp, voltageV, currentA, powerW, energyKwh, frequencyHz, powerFactor, source} */
+/**
+ * Merapikan Data_Listrik hanya jika ada baris kosong di tengah data.
+ * Header baris 1 dipertahankan; data bertimestamp dipadatkan mulai baris 2.
+ */
+function compactReadingRowsIfNeeded_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 2) return;
+  const rowCount = lastRow - 1;
+  const values = sheet.getRange(2, 1, rowCount, 11).getValues();
+  let seenBlank = false;
+  let hasGap = false;
+  for (const row of values) {
+    const hasTimestamp = row[0] !== '' && row[0] !== null;
+    if (!hasTimestamp) seenBlank = true;
+    else if (seenBlank) { hasGap = true; break; }
+  }
+  if (!hasGap) return;
+
+  const kept = values.filter(row => row[0] !== '' && row[0] !== null);
+  sheet.getRange(2, 1, rowCount, 11).clearContent();
+  if (kept.length) {
+    sheet.getRange(2, 1, kept.length, 11).setValues(kept);
+  }
+}
+
 function doPost(e) {
   try {
     assertConfigured_();
@@ -255,6 +280,9 @@ function doPost(e) {
     try {
       const receivedAt = new Date();
       const readingSheet = ss.getSheetByName('Data_Listrik');
+      if (!readingSheet) throw new Error('Sheet Data_Listrik tidak ditemukan');
+      // Rapikan celah baris lama (misalnya data terakhir di baris 54 padahal 2-53 kosong).
+      compactReadingRowsIfNeeded_(readingSheet);
       const existing = getRows_('Data_Listrik').filter(r => String(r.customerId) === customerId && String(r.meterId) === deviceId)
         .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp));
       const previous = existing[0];
