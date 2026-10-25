@@ -228,24 +228,50 @@ function adminAddTokenBalance(session, customerId, amountRp, note) {
  * Header baris 1 dipertahankan; data bertimestamp dipadatkan mulai baris 2.
  */
 function compactReadingRowsIfNeeded_(sheet) {
+  // Timestamp di kolom A menjadi penentu apakah baris berisi data.
+  // Padatkan semua baris data yang valid ke baris 2..N, tanpa mengubah urutannya.
   const lastRow = sheet.getLastRow();
-  if (lastRow <= 2) return;
-  const rowCount = lastRow - 1;
-  const values = sheet.getRange(2, 1, rowCount, 11).getValues();
-  let seenBlank = false;
-  let hasGap = false;
-  for (const row of values) {
-    const hasTimestamp = row[0] !== '' && row[0] !== null;
-    if (!hasTimestamp) seenBlank = true;
-    else if (seenBlank) { hasGap = true; break; }
-  }
-  if (!hasGap) return;
+  if (lastRow < 2) return 0;
 
-  const kept = values.filter(row => row[0] !== '' && row[0] !== null);
-  sheet.getRange(2, 1, rowCount, 11).clearContent();
-  if (kept.length) {
-    sheet.getRange(2, 1, kept.length, 11).setValues(kept);
+  const width = Math.max(sheet.getLastColumn(), 11);
+  const values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
+  const kept = values.filter(row => {
+    const ts = row[0];
+    return ts !== '' && ts !== null && ts !== undefined &&
+      !(ts instanceof Date && isNaN(ts.getTime()));
+  });
+
+  let hasGap = kept.length !== values.length;
+  if (!hasGap) {
+    let blankSeen = false;
+    for (const row of values) {
+      const populated = row[0] !== '' && row[0] !== null && row[0] !== undefined;
+      if (!populated) blankSeen = true;
+      else if (blankSeen) { hasGap = true; break; }
+    }
   }
+  if (!hasGap) return kept.length;
+
+  // Bersihkan konten lama pada area data, lalu tulis ulang data valid dari baris 2.
+  // Format header, frozen row, dan nama kolom tidak diubah.
+  sheet.getRange(2, 1, lastRow - 1, width).clearContent();
+  if (kept.length) {
+    sheet.getRange(2, 1, kept.length, width).setValues(kept);
+  }
+  return kept.length;
+}
+
+function lastReadingRow_(sheet) {
+  // Cari baris terakhir yang benar-benar memiliki timestamp, bukan getLastRow()
+  // yang dapat terpengaruh format/isi di kolom lain.
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 1;
+  const timestamps = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = timestamps.length - 1; i >= 0; i--) {
+    const ts = timestamps[i][0];
+    if (ts !== '' && ts !== null && ts !== undefined) return i + 2;
+  }
+  return 1;
 }
 
 function doPost(e) {
@@ -281,7 +307,7 @@ function doPost(e) {
       const receivedAt = new Date();
       const readingSheet = ss.getSheetByName('Data_Listrik');
       if (!readingSheet) throw new Error('Sheet Data_Listrik tidak ditemukan');
-      // Rapikan celah baris lama (misalnya data terakhir di baris 54 padahal 2-53 kosong).
+      // Rapikan baris kosong lama; data bertimestamp dipadatkan mulai baris 2.
       compactReadingRowsIfNeeded_(readingSheet);
       const existing = getRows_('Data_Listrik').filter(r => String(r.customerId) === customerId && String(r.meterId) === deviceId)
         .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp));
@@ -290,13 +316,15 @@ function doPost(e) {
         logIncident_(customerId, deviceId, 'ENERGY_COUNTER_DROP', 'WARNING',
           'Energi kumulatif turun dari '+Number(previous.energyKwh||0)+' menjadi '+energy+' kWh. Periksa reset meter atau urutan data.', '');
       }
-      readingSheet.appendRow([
+      // Tulis pada baris berikutnya setelah timestamp terakhir yang valid.
+      // Ini menghindari data masuk ke baris 54/63 saat ada celah kosong lama.
+      const savedRow = lastReadingRow_(readingSheet) + 1;
+      readingSheet.getRange(savedRow, 1, 1, 11).setValues([[
         timestamp,customerId,deviceId,voltage,current,power,energy,
         frequency,pf,String(body.source||'ESP32').slice(0,40),receivedAt
-      ]);
+      ]]);
       // Format tampilan: V/A/W/Hz/PF dua desimal, energi kWh tiga desimal.
       // Nilai sensor asli tetap disimpan; format ini hanya mengubah tampilan di Sheets.
-      const savedRow = readingSheet.getLastRow();
       readingSheet.getRange(savedRow, 4, 1, 3).setNumberFormat('0.00'); // D:F
       readingSheet.getRange(2, 7, savedRow - 1, 1).setNumberFormat('0.000'); // G: energyKwh, termasuk data lama
       readingSheet.getRange(savedRow, 8, 1, 2).setNumberFormat('0.00'); // H:I
