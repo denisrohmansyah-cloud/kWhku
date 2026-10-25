@@ -150,10 +150,9 @@ function getDashboard(session) {
   const result = selected.map(c => {
     const rs = allReadings.filter(r => r.customerId === c.customerId);
     const latest = rs[0] || null;
-    const monthRows = rs.filter(r => new Date(r.timestamp) >= monthStart);
-    const firstMonth = monthRows.length ? monthRows[monthRows.length-1] : null;
-    const energyMonth = firstMonth && latest ? Math.max(0, Number(latest.energyKwh||0)-Number(firstMonth.energyKwh||0)) : 0;
-    const costMonth = energyMonth * Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
+    const energyMonth = energyBetween_(rs, monthStart.getTime(), now.getTime());
+    const tariff = Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
+    const costMonth = energyMonth * tariff;
     const online = latest && ((now-new Date(latest.receivedAt || latest.timestamp))/60000 <= CONFIG.MAX_AGE_MINUTES_ONLINE);
     const mode = String(c.mode || 'PASCABAYAR').toUpperCase();
     const balance = Number(c.tokenBalanceRp || 0);
@@ -161,7 +160,7 @@ function getDashboard(session) {
     return {
       customerId:c.customerId, name:c.name, meterId:c.meterId, mode,
       tariffRpPerKwh:Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH),
-      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,3),
+      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,6),
       costMonthRp:round_(costMonth,2), latest:latest ? normalizeReading_(latest) : null,
       online:!!online, tokenBalanceRp:balance,
       estimatedDaysLeft: mode === 'PRABAYAR' && dailyCost > 0 ? round_(balance/dailyCost,1) : null,
@@ -436,12 +435,19 @@ function normalizeReading_(r) {
     source:r.source||'ESP32'};
 }
 function estimateDailyCost_(readings,tariff) {
-  if(readings.length<2) return 0;
-  const newest=readings[0], oldest=readings[Math.min(readings.length-1,20)];
-  const hours=(new Date(newest.timestamp)-new Date(oldest.timestamp))/3600000;
-  const delta=Number(newest.energyKwh)-Number(oldest.energyKwh);
-  if(hours<=0||delta<0) return 0;
-  return delta/hours*24*tariff;
+  if(!Array.isArray(readings)||readings.length<2||!(Number(tariff)>0))return 0;
+  const ordered=readings.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)),newest=ordered[ordered.length-1],oldest=ordered[Math.max(0,ordered.length-21)];
+  const t0=new Date(oldest.timestamp).getTime(),t1=new Date(newest.timestamp).getTime(),delta=Number(newest.energyKwh)-Number(oldest.energyKwh),hours=(t1-t0)/3600000;
+  if(!Number.isFinite(t0)||!Number.isFinite(t1)||hours<=0||!Number.isFinite(delta)||delta<0)return 0;
+  return delta/hours*24*Number(tariff);
+}
+function energyBetween_(readingsDesc,startMs,endMs){
+  if(!Array.isArray(readingsDesc)||readingsDesc.length<2||!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs)return 0;
+  const ordered=readingsDesc.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));let total=0;
+  for(let i=1;i<ordered.length;i++){const a=ordered[i-1],b=ordered[i],t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime(),e0=Number(a.energyKwh),e1=Number(b.energyKwh);
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(e0)||!Number.isFinite(e1)||e1<e0)continue;
+    const overlap=Math.max(0,Math.min(t1,endMs)-Math.max(t0,startMs));if(overlap>0)total+=(e1-e0)*overlap/(t1-t0)}
+  return total;
 }
 function truthy_(v){return v===true||String(v).toLowerCase()==='true'||String(v)==='1'||String(v).toLowerCase()==='yes';}
 function round_(n,d){const m=Math.pow(10,d||0);return Math.round(n*m)/m;}
@@ -494,5 +500,5 @@ function dailyUsage_(readingsDesc,tariff,customerId){
       cursor=end;
     }
   }
-  return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:round_(m[k],3),costRp:round_(m[k]*tariff,2)}));
+  return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:m[k],costRp:m[k]*tariff}));
 }
