@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const rp=n=>'Rp '+(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
-const num=n=>{const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
+const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
 const fmtEnergy=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:3,maximumFractionDigits:3});
 const fmtCurrentMa=n=>{const v=num(n);return v===null?'—':(v*1000).toLocaleString('id-ID',{minimumFractionDigits:0,maximumFractionDigits:2})};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
