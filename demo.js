@@ -12,8 +12,10 @@ window.DemoAPI=(()=>{
   const TK=[{createdAt:new Date(end-5*864e5).toISOString(),customerId:'PLG-001',name:'Budi Santoso',amountRp:100000,tokenCode:'4821-0937-5512-6640-1198',note:'Saldo awal'},
             {createdAt:new Date(end-3*864e5).toISOString(),customerId:'PLG-003',name:'Agus Pratama',amountRp:50000,tokenCode:'7302-1184-9961-0275-3341',note:'Saldo awal'}];
   const code=()=>Array.from({length:5},()=>pad(Math.floor(rnd()*100))+pad(Math.floor(rnd()*100))).join('-');
-  const daily=(rs,c)=>{const m={};for(let i=1;i<rs.length;i++){const d=rs[i].energyKwh-rs[i-1].energyKwh;if(d<0)continue;const k=dk(new Date(rs[i].timestamp));m[k]=(m[k]||0)+d}
-    return Object.keys(m).sort().map(k=>({customerId:c.customerId,date:k,kwh:+m[k].toFixed(3),costRp:+(m[k]*c.tariffRpPerKwh).toFixed(2)}))};
+  const daily=(rs,c)=>{const m={};for(let i=1;i<rs.length;i++){const a=rs[i-1],b=rs[i],t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime(),delta=Number(b.energyKwh)-Number(a.energyKwh);
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(delta)||delta<0)continue;
+    let cursor=t0;while(cursor<t1){const d=new Date(cursor),key=dk(d),next=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1).getTime(),end=Math.min(t1,next);if(end<=cursor)break;m[key]=(m[key]||0)+delta*(end-cursor)/(t1-t0);cursor=end}}
+    return Object.keys(m).sort().map(k=>({customerId:c.customerId,date:k,kwh:m[k],costRp:m[k]*c.tariffRpPerKwh}))};
   const me=s=>s&&sess[s.token];
   const bad={ok:false,message:'Sesi tidak valid. Silakan masuk kembali.'};
   return {
@@ -22,9 +24,11 @@ window.DemoAPI=(()=>{
       return {ok:true,role:x.role,username:u,name:x.name,customerId:x.customerId,token}},
     getDashboard(s){const u=me(s);if(!u)return bad;const sel=u.role==='ADMIN'?C:C.filter(c=>c.customerId===u.customerId);
       const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);let dl=[];const out=sel.map(c=>{
-        const rs=R.filter(r=>r.customerId===c.customerId),L=rs[rs.length-1],mr=rs.filter(r=>new Date(r.timestamp)>=ms),e=mr.length?L.energyKwh-mr[0].energyKwh:0,d=daily(rs,c);dl=dl.concat(d);
+        const rs=R.filter(r=>r.customerId===c.customerId),L=rs[rs.length-1],d=daily(rs,c);let e=0;
+        for(let j=1;j<rs.length;j++){const a=rs[j-1],b=rs[j],t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime(),end=Date.now(),delta=Number(b.energyKwh)-Number(a.energyKwh),overlap=Math.max(0,Math.min(t1,end)-Math.max(t0,ms.getTime()));if(t1>t0&&delta>=0&&overlap>0)e+=delta*overlap/(t1-t0)}
+        dl=dl.concat(d);
         const l7=d.slice(-7),dc=l7.length?l7.reduce((a,x)=>a+x.costRp,0)/l7.length:0;
-        return {...c,energyMonthKwh:+e.toFixed(3),costMonthRp:+(e*c.tariffRpPerKwh).toFixed(2),latest:L,online:true,estimatedDaysLeft:c.mode==='PASCABAYAR'&&dc>0?+(c.tokenBalanceRp/dc).toFixed(1):null,dailyCostRp:Math.round(dc)}});
+        return {...c,energyMonthKwh:e,costMonthRp:+(e*c.tariffRpPerKwh).toFixed(2),latest:L,online:true,estimatedDaysLeft:c.mode==='PASCABAYAR'&&dc>0?+(c.tokenBalanceRp/dc).toFixed(1):null,dailyCostRp:Math.round(dc)}});
       return {ok:true,role:u.role,customers:out,readings:[],daily:dl,serverTime:new Date().toISOString()}},
     getTokens(s){const u=me(s);if(!u)return bad;return {ok:true,rows:TK.filter(t=>u.role==='ADMIN'||t.customerId===u.customerId).slice().reverse()}},
     adminCreateCustomer(s,p){const u=me(s);if(!u||u.role!=='ADMIN')return {ok:false,message:'Akses admin diperlukan.'};
