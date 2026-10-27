@@ -3,7 +3,7 @@ const rp=n=>'Rp '+(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2
 const fmt=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
 const fmtEnergy=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:3,maximumFractionDigits:3});
-const fmtCurrentMa=n=>{const v=num(n);return v===null?'—':(v*1000).toLocaleString('id-ID',{minimumFractionDigits:0,maximumFractionDigits:2})};
+const fmtCurrentA=n=>{const v=num(n);return v===null?'—':v.toLocaleString('id-ID',{minimumFractionDigits:0,maximumFractionDigits:3})};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -167,17 +167,19 @@ function renderMonitoring(){
   $('monStatus').innerHTML='<span class="badge '+(status==='ONLINE'?'':'amber')+'">'+esc(status)+'</span>';
   $('monLastSeen').textContent=latest?'Terakhir diterima '+timeLabel(latest.receivedAt||latest.timestamp):'Belum ada data';
   $('monVoltage').textContent=latest?fmt(latest.voltageV)+' V':'— V';
-  $('monCurrent').textContent=latest?fmtCurrentMa(latest.currentA)+' mA':'— mA';
+  $('monCurrent').textContent=latest?fmtCurrentA(latest.currentA)+' A':'— A';
+  $('monFrequency').textContent=latest?fmt(latest.frequencyHz)+' Hz':'— Hz';
+  $('monPowerFactor').textContent=latest?fmt(latest.powerFactor):'—';
   $('monEnergy').textContent=latest?fmtEnergy(latest.energyKwh)+' kWh':'— kWh';
   $('monPower').textContent='Daya '+(latest?fmt(latest.powerW)+' W':'— W');
-  $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmt(r.powerW)+' W</td><td>'+fmt(r.voltageV)+' V</td><td>'+fmtCurrentMa(r.currentA)+' mA</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada data pembacaan.</td></tr>';
+  $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmt(r.powerW)+' W</td><td>'+fmt(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmt(r.frequencyHz)+' Hz</td><td>'+fmt(r.powerFactor)+'</td></tr>').join('')||'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>';
   $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
 }
 $('exportMonitoring').onclick=()=>{
   const start=$('monitorStart').value,end=$('monitorEnd').value;
   const readings=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!start||String(r.timestamp).slice(0,10)>=start)&&(!end||String(r.timestamp).slice(0,10)<=end));
-  const data=[['timestamp','receivedAt','customerId','meterId','energyKwh','powerW','voltageV','currentA'],...readings.map(r=>[r.timestamp,r.receivedAt||'',r.customerId,r.meterId,r.energyKwh,r.powerW,r.voltageV,r.currentA])];
+  const data=[['timestamp','receivedAt','customerId','meterId','energyKwh','powerW','voltageV','currentA','frequencyHz','powerFactor'],...readings.map(r=>[r.timestamp,r.receivedAt||'',r.customerId,r.meterId,r.energyKwh,r.powerW,r.voltageV,r.currentA,r.frequencyHz,r.powerFactor])];
   const csv=data.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV monitoring diunduh');
 };
