@@ -26,7 +26,7 @@
     <form id="loginForm">
       <div class="field"><label>Masuk sebagai</label><div class="role-switch" id="roleSwitch"><button type="button" class="role-btn active" data-role="customer"><span>🏠</span>Pelanggan</button><button type="button" class="role-btn" data-role="admin"><span>🛡️</span>Admin</button></div><input type="hidden" id="role" value="customer"></div>
       <div class="field"><label for="username">Username / ID Pelanggan</label><input id="username" required placeholder="Contoh: PLG-001 atau admin"></div>
-      <div class="field"><label for="password">Kata sandi</label><input id="password" type="password" required placeholder="Masukkan kata sandi"></div>
+      <div class="field"><label for="password">Kata sandi</label><div class="password-wrap"><input id="password" type="password" required placeholder="Masukkan kata sandi" autocomplete="current-password"><button type="button" id="togglePassword" class="password-toggle" aria-label="Tampilkan kata sandi" aria-pressed="false" title="Tampilkan kata sandi">👁</button></div></div>
       <button class="primary login-submit" type="submit">Masuk ke Dashboard <span aria-hidden="true">→</span></button>
     </form>
     <div class="demo-hint" id="demoHint"></div>
