@@ -146,7 +146,8 @@ function getDashboard(session) {
   const selected = s.role === 'ADMIN' ? customers : customers.filter(c => c.customerId === s.customerId);
   const allReadings = getRows_('Data_Listrik').sort((a,b) => new Date(b.timestamp)-new Date(a.timestamp));
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(),now.getMonth(),1);
+  const monthKey = Utilities.formatDate(now, CONFIG.TIME_ZONE, 'yyyy-MM');
+  const monthStart = Utilities.parseDate(monthKey + '-01 00:00:00', CONFIG.TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
   const result = selected.map(c => {
     const rs = allReadings.filter(r => r.customerId === c.customerId);
     const latest = rs[0] || null;
@@ -539,7 +540,9 @@ function genTokenCode_(){let d='';for(let i=0;i<20;i++)d+=Math.floor(Math.random
 function dailyUsage_(readingsDesc,tariff,customerId){
   // Distribusikan selisih counter ke tanggal yang benar berdasarkan lama interval,
   // agar interval yang melewati tengah malam tidak seluruhnya masuk ke satu hari.
-  const asc=readingsDesc.slice().reverse(),m={};
+  const asc=readingsDesc.slice().filter(r => r && Number.isFinite(new Date(r.timestamp).getTime()))
+    .sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const m={};
   for(let i=1;i<asc.length;i++){
     const r0=asc[i-1],r1=asc[i];
     const t0=new Date(r0.timestamp).getTime(),t1=new Date(r1.timestamp).getTime();
