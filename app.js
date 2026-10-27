@@ -9,7 +9,7 @@ const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'shor
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const dLabel=k=>dText(k+'T00:00:00');
 const CFG=window.KWHKU_CONFIG||{},DEMO=!CFG.API_URL;
-let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],connections:[],incidents:[],devices:[]},selId='',shown=new Date();shown.setDate(1);
+let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],connections:[],incidents:[],devices:[]},monitoringError='',selId='',shown=new Date();shown.setDate(1);
 
 function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3500)}
 async function api(fn,...args){
@@ -66,9 +66,9 @@ async function refresh(){
     if(!admin()&&!nextCustomers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun ini bukan pelanggan pascabayar yang terdaftar.')}
     customers=nextCustomers;daily=nextDaily;tokens=[];
     try{const mon=await api('getMonitoring',session,500);
-      if(mon?.ok&&Array.isArray(mon.readings))monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};
-      else console.warn('Monitoring tidak tersedia:',mon?.message||'Format respons tidak sesuai');
-    }catch(err){console.warn('Gagal memuat monitoring; data terakhir yang valid dipertahankan:',err)}
+      if(mon?.ok&&Array.isArray(mon.readings)){monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};monitoringError='';}
+      else {monitoringError=mon?.message||'Respons monitoring tidak sesuai format.';console.warn('Monitoring tidak tersedia:',monitoringError)}
+    }catch(err){monitoringError='Gagal memuat monitoring: '+(err?.message||String(err));console.warn(monitoringError,err)}
     $('liveText').textContent=DEMO?'MODE DEMO':'TERHUBUNG KE SHEETS';renderAll();
   }catch(err){const badge=$('liveText');if(badge)badge.textContent=DEMO?'MODE DEMO':'GAGAL MEMPERBARUI';console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
   finally{refreshInFlight=false}
@@ -152,12 +152,13 @@ function renderTokens(){}
 
 function renderMonitoring(){
   const monitorStart=$('monitorStart')?.value||'',monitorEnd=$('monitorEnd')?.value||'';
-  const allVisible=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||String(r.timestamp).slice(0,10)>=monitorStart)&&(!monitorEnd||String(r.timestamp).slice(0,10)<=monitorEnd));
+  const localDay=v=>{const d=new Date(v);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(d):''};
+  const allVisible=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||localDay(r.timestamp)>=monitorStart)&&(!monitorEnd||localDay(r.timestamp)<=monitorEnd)).slice().sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
   const readings=allVisible.slice(0,5);
   const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
   const intervals=stamps.slice(1).map((t,i)=>t-stamps[i]).filter(t=>t>0),gaps=intervals.filter(t=>t>90000).length;
   const avgInterval=intervals.length?intervals.reduce((sum,t)=>sum+t,0)/intervals.length/1000:0;
-  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?fmt(avgInterval)+' detik':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'');
+  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?fmt(avgInterval)+' detik':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'')+(monitoringError?' <span class="monitoring-error">Peringatan API: '+esc(monitoringError)+'</span>':'');
   const connections=(monitoring.connections||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,5);
   const incidents=(monitoring.incidents||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,5);
   const devices=(monitoring.devices||[]).filter(r=>admin()||r.customerId===session?.customerId);
