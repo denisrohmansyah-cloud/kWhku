@@ -204,6 +204,38 @@ function adminCreateCustomer(session, payload) {
   return {ok:true,customerId:id,temporaryPin:pin,message:'Pelanggan dibuat. Bagikan PIN sementara secara aman dan minta pengguna menggantinya.'};
 }
 
+function adminUpdateCustomer(session, customerId, payload) {
+  const s = validateSession_(session);
+  if (!s.ok || s.role !== 'ADMIN') return {ok:false,message:'Akses admin diperlukan.'};
+  const id = String(customerId || '').trim().toUpperCase();
+  payload = payload || {};
+  const rows = getRows_('Pelanggan');
+  const c = rows.find(r => String(r.customerId) === id);
+  if (!c) return {ok:false,message:'Pelanggan tidak ditemukan.'};
+  const name = String(payload.name !== undefined ? payload.name : c.name).trim();
+  const meterId = String(payload.meterId !== undefined ? payload.meterId : c.meterId).trim();
+  const mode = String(payload.mode !== undefined ? payload.mode : c.mode).trim().toUpperCase();
+  const tariff = Number(payload.tariffRpPerKwh !== undefined ? payload.tariffRpPerKwh : c.tariffRpPerKwh);
+  const powerVa = Number(payload.powerVa !== undefined ? payload.powerVa : c.powerVa);
+  const monthlyTargetRp = Number(payload.monthlyTargetRp !== undefined ? payload.monthlyTargetRp : c.monthlyTargetRp);
+  const active = payload.active === undefined ? truthy_(c.active) : truthy_(payload.active);
+  if (!name || !meterId || !['PRABAYAR','PASCABAYAR'].includes(mode) || !Number.isFinite(tariff) || tariff <= 0 || !Number.isFinite(powerVa) || powerVa <= 0 || !Number.isFinite(monthlyTargetRp) || monthlyTargetRp < 0) {
+    return {ok:false,message:'Periksa nama, ID meter, mode, tarif, daya, dan target bulanan.'};
+  }
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sh = ss.getSheetByName('Pelanggan');
+  const row = rows.findIndex(r => String(r.customerId) === id) + 2;
+  // Kolom: ID, nama, meter, mode, tarif, daya, saldo, target, aktif, dibuat.
+  sh.getRange(row, 2, 1, 1).setValue(name);
+  sh.getRange(row, 3, 1, 1).setValue(meterId);
+  sh.getRange(row, 4, 1, 1).setValue(mode);
+  sh.getRange(row, 5, 1, 1).setValue(tariff);
+  sh.getRange(row, 6, 1, 1).setValue(powerVa);
+  sh.getRange(row, 8, 1, 1).setValue(monthlyTargetRp);
+  sh.getRange(row, 9, 1, 1).setValue(active);
+  return {ok:true,customerId:id,message:'Data pelanggan berhasil diperbarui.'};
+}
+
 function adminAddTokenBalance(session, customerId, amountRp, note) {
   const s=validateSession_(session);
   if(!s.ok || s.role!=='ADMIN') return {ok:false,message:'Akses admin diperlukan.'};
@@ -522,6 +554,7 @@ function handleApi_(body){
       case 'getHistory': return getHistory(a[0],a[1],a[2]);
       case 'getTokens': return getTokens(a[0]);
       case 'adminCreateCustomer': return adminCreateCustomer(a[0],a[1]||{});
+      case 'adminUpdateCustomer': return adminUpdateCustomer(a[0],a[1],a[2]||{});
       case 'adminAddTokenBalance': return adminAddTokenBalance(a[0],a[1],a[2],a[3]);
       default: return {ok:false,message:'Operasi tidak dikenal.'};
     }
