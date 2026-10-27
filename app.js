@@ -63,7 +63,7 @@ async function refresh(){
   try{
     const res=await api('getDashboard',session);
     if(!res?.ok){if(/Sesi/i.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
-    const nextCustomers=(Array.isArray(res.customers)?res.customers:[]).filter(c=>String(c.mode||'').toUpperCase()==='PASCABAYAR');
+    const nextCustomers=(Array.isArray(res.customers)?res.customers:[]).filter(c=>admin()||String(c.mode||'').toUpperCase()==='PASCABAYAR');
     const allowed=new Set(nextCustomers.map(c=>c.customerId));
     const nextDaily=(Array.isArray(res.daily)?res.daily:[]).filter(r=>allowed.has(r.customerId)&&r.date&&num(r.kwh)!==null&&num(r.costRp)!==null);
     if(!admin()&&!nextCustomers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun ini bukan pelanggan pascabayar yang terdaftar.')}
