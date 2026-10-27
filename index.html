@@ -6,7 +6,7 @@
 <title>kWh-Ku — Sistem Monitoring Listrik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=research-audit-20261025">
+<link rel="stylesheet" href="style.css?v=research-audit-20261027">
 </head>
 <body>
 <div id="loginView" class="login-wrap">
@@ -85,12 +85,14 @@
       <div class="stats monitoring-stats">
         <article class="stat"><div class="stat-head">Status perangkat</div><strong id="monStatus">—</strong><div class="foot" id="monLastSeen">Menunggu data</div></article>
         <article class="stat"><div class="stat-head">Tegangan terbaru</div><strong id="monVoltage">— V</strong><div class="foot">Pembacaan terakhir</div></article>
-        <article class="stat"><div class="stat-head">Arus terbaru</div><strong id="monCurrent">— mA</strong><div class="foot">Pembacaan terakhir</div></article>
+        <article class="stat"><div class="stat-head">Arus terbaru</div><strong id="monCurrent">— A</strong><div class="foot">Pembacaan terakhir</div></article>
         <article class="stat"><div class="stat-head">Energi kumulatif</div><strong id="monEnergy">— kWh</strong><div class="foot" id="monPower">Daya — W</div></article>
+        <article class="stat"><div class="stat-head">Power Factor</div><strong id="monPowerFactor">—</strong><div class="foot">Faktor daya (PF)</div></article>
+        <article class="stat"><div class="stat-head">Frekuensi</div><strong id="monFrequency">— Hz</strong><div class="foot">Frekuensi listrik</div></article>
       </div>
       <div class="panel table-panel">
         <div class="panel-head"><div><h3>Riwayat pembacaan sensor</h3><p>Energi kumulatif, daya, tegangan, arus, timestamp, dan waktu diterima server.</p></div><button class="secondary" id="exportMonitoring">⇩ Ekspor CSV</button></div>
-        <div class="filter-row monitoring-filter" style="padding:0 20px"><label class="date-filter">Dari <input id="monitorStart" type="date" aria-label="Tanggal mulai data sensor" /></label><label class="date-filter">Sampai <input id="monitorEnd" type="date" aria-label="Tanggal akhir data sensor" /></label></div><div id="dataQuality" class="data-quality" role="status"></div><div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus (mA)</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
+        <div class="filter-row monitoring-filter" style="padding:0 20px"><label class="date-filter">Dari <input id="monitorStart" type="date" aria-label="Tanggal mulai data sensor" /></label><label class="date-filter">Sampai <input id="monitorEnd" type="date" aria-label="Tanggal akhir data sensor" /></label></div><div id="dataQuality" class="data-quality" role="status"></div><div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus (A)</th><th>Frekuensi (Hz)</th><th>Power Factor</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
       </div>
       <div class="panel table-panel monitoring-panel">
         <div class="panel-head"><div><h3>Riwayat koneksi</h3><p>Perubahan status yang tercatat oleh server.</p></div></div>
@@ -108,8 +110,8 @@
   </main>
 </div>
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
-<script src="config.js?v=research-audit-20261025"></script>
-<script src="demo.js?v=research-audit-20261025"></script>
-<script src="app.js?v=research-audit-20261025"></script>
+<script src="config.js?v=research-audit-20261027"></script>
+<script src="demo.js?v=research-audit-20261027"></script>
+<script src="app.js?v=research-audit-20261027"></script>
 </body>
 </html>
