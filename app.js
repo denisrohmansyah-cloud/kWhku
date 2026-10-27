@@ -25,6 +25,9 @@ const avg=id=>{const a=daily.filter(r=>r.customerId===id);return a.length?a.redu
 const high=r=>r.kwh>avg(r.customerId)*1.5;
 const badge=r=>high(r)?'<span class="badge red">Tinggi</span>':'<span class="badge">Normal</span>';
 
+// Password visibility: only reveals the value currently typed in the login form.
+$('togglePassword').onclick=()=>{const input=$('password'),show=input.type==='password';input.type=show?'text':'password';$('togglePassword').textContent=show?'🙈':'👁';$('togglePassword').setAttribute('aria-label',show?'Sembunyikan kata sandi':'Tampilkan kata sandi');$('togglePassword').setAttribute('aria-pressed',String(show));};
+
 // ---- Login
 document.querySelectorAll('.role-btn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.role-btn').forEach(x=>x.classList.toggle('active',x===b));$('role').value=b.dataset.role});
 $('demoHint').innerHTML=DEMO?'<b>MODE DEMO</b> (data contoh).<br>Pelanggan: <b>PLG-001</b> / <b>123456</b><br>Admin: <b>admin</b> / <b>admin123</b>':'Masuk dengan akun yang terdaftar di Google Sheets.';
@@ -145,9 +148,37 @@ function renderCalendar(){const y=shown.getFullYear(),m=shown.getMonth(),first=n
     $('dayDetail').innerHTML=rs.length?`<b>${dLabel(k)}</b><br>Pemakaian: <b>${fmtEnergy(rs.reduce((a,r)=>a+r.kwh,0))} kWh</b> · Biaya: <b>${rp(rs.reduce((a,r)=>a+r.costRp,0))}</b>`:`<b>${dLabel(k)}</b><br>Tidak ada data pemakaian.`}}
 $('prevMonth').onclick=()=>{shown.setMonth(shown.getMonth()-1);renderCalendar()};$('nextMonth').onclick=()=>{shown.setMonth(shown.getMonth()+1);renderCalendar()};
 function renderCustomers(){if(!admin())return;const q=$('customerSearch').value.toLowerCase();
-  $('customerTable').innerHTML=customers.filter(c=>(c.customerId+' '+c.name).toLowerCase().includes(q)).map(c=>`<tr><td><b>${esc(c.customerId)}</b></td><td>${esc(c.name)}</td><td>${fmt(c.powerVa)} VA</td><td>${fmtEnergy(c.energyMonthKwh)} kWh</td><td>${rp(c.costMonthRp)}</td><td><span class="badge ${c.online?'':'amber'}">${c.online?'Online':'Offline'}</span></td><td><button class="small-btn" data-view="${esc(c.customerId)}">Lihat riwayat</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">Belum ada pelanggan.</td></tr>'}
+  $('customerTable').innerHTML=customers.filter(c=>(c.customerId+' '+c.name+' '+c.meterId).toLowerCase().includes(q)).map(c=>`<tr><td><b>${esc(c.customerId)}</b></td><td>${esc(c.name)}<div class="muted">${esc(c.meterId||'')}</div></td><td>${fmt(c.powerVa)} VA<br><span class="muted">${esc(c.mode||'PASCABAYAR')}</span></td><td>${fmtEnergy(c.energyMonthKwh)} kWh</td><td>${rp(c.costMonthRp)}<div class="muted">${rp(c.tariffRpPerKwh)}/kWh</div></td><td><span class="badge ${c.online?'':'amber'}">${c.online?'Online':'Offline'}</span> <span class="badge ${c.active===false?'amber':''}">${c.active===false?'Nonaktif':'Aktif'}</span></td><td><button class="small-btn" data-view="${esc(c.customerId)}">Lihat riwayat</button> <button class="small-btn" data-edit="${esc(c.customerId)}">Edit</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">Belum ada pelanggan.</td></tr>'}
 $('customerSearch').oninput=renderCustomers;
-$('customerTable').onclick=e=>{const id=e.target.dataset.view;if(!id)return;showPage('history');selId=id;$('historySearch').value=id;renderAll();toast('Riwayat '+cust(id).name)};
+$('customerTable').onclick=e=>{const view=e.target.closest('[data-view]'),edit=e.target.closest('[data-edit]');if(view){const id=view.dataset.view;showPage('history');selId=id;$('historySearch').value=id;renderAll();toast('Riwayat '+cust(id).name)}else if(edit){openEditCustomer(edit.dataset.edit)}};
+function openEditCustomer(id){
+  if(!admin())return;
+  const c=customers.find(x=>x.customerId===id);if(!c)return toast('Pelanggan tidak ditemukan.');
+  modal(`<h2>Edit data pelanggan</h2><p>ID pelanggan: <b>${esc(c.customerId)}</b> (tidak dapat diubah)</p>
+  <form id="editCustomerForm">
+   <div class="field"><label>Nama pelanggan</label><input id="eName" required value="${esc(c.name)}"></div>
+   <div class="field"><label>ID meter / perangkat</label><input id="eMeter" required value="${esc(c.meterId||'')}"></div>
+   <div class="field"><label>Kategori layanan</label><select id="eMode"><option value="PASCABAYAR" ${String(c.mode).toUpperCase()==='PASCABAYAR'?'selected':''}>Pascabayar</option><option value="PRABAYAR" ${String(c.mode).toUpperCase()==='PRABAYAR'?'selected':''}>Prabayar</option></select></div>
+   <div class="field"><label>Golongan tarif</label><select id="eTariff"><option value="415">450 VA subsidi — Rp 415/kWh</option><option value="605">900 VA subsidi — Rp 605/kWh</option><option value="1352">900 VA RTM — Rp 1.352/kWh</option><option value="1444.70">1.300 / 2.200 VA — Rp 1.444,70/kWh</option><option value="1699.53">3.500 VA ke atas — Rp 1.699,53/kWh</option><option value="custom">Tarif khusus / manual</option></select></div>
+   <div class="field"><label>Tarif (Rp/kWh)</label><input id="eTariffCustom" type="number" min="0.01" step="0.01" required value="${Number(c.tariffRpPerKwh)||605}"></div>
+   <div class="field"><label>Daya tersambung (VA)</label><input id="ePower" type="number" min="1" step="1" required value="${Number(c.powerVa)||900}"></div>
+   <div class="field"><label>Target biaya bulanan (Rp)</label><input id="eTarget" type="number" min="0" step="1" required value="${Number(c.monthlyTargetRp)||0}"></div>
+   <div class="field"><label>Status akun</label><select id="eActive"><option value="true" ${c.active===false?'':'selected'}>Aktif</option><option value="false" ${c.active===false?'selected':''}>Nonaktif</option></select></div>
+   <p class="muted">Perubahan tarif berlaku untuk estimasi biaya yang dihitung dari data pemakaian. Riwayat pengukuran mentah tidak diubah.</p>
+   <div class="modal-actions"><button type="button" class="secondary" id="editCancel">Batal</button><button class="primary" type="submit">Simpan perubahan</button></div>
+  </form>`);
+  const tariff=$('eTariff'),custom=$('eTariffCustom');
+  const known=['415','605','1352','1444.7','1699.53'];
+  tariff.value=known.includes(String(Number(c.tariffRpPerKwh)))?String(Number(c.tariffRpPerKwh)):'custom';
+  tariff.onchange=()=>{if(tariff.value!=='custom')custom.value=tariff.value;};
+  $('editCancel').onclick=()=>$('modalRoot').innerHTML='';
+  $('editCustomerForm').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Menyimpan…';
+   try{const res=await api('adminUpdateCustomer',session,id,{name:$('eName').value.trim(),meterId:$('eMeter').value.trim(),mode:$('eMode').value,tariffRpPerKwh:Number(custom.value),powerVa:Number($('ePower').value),monthlyTargetRp:Number($('eTarget').value),active:$('eActive').value==='true'});
+    if(!res?.ok){toast(res?.message||'Gagal menyimpan');btn.disabled=false;btn.textContent='Simpan perubahan';return}
+    $('modalRoot').innerHTML='';toast('Data pelanggan berhasil diperbarui');await refresh();
+   }catch(err){toast('Gagal menyimpan: '+(err.message||err));btn.disabled=false;btn.textContent='Simpan perubahan'}
+  };
+ }
 function renderTokens(){}
 
 function renderMonitoring(){
