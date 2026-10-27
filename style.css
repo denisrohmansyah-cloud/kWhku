@@ -25,3 +25,6 @@
 
 /* Login password visibility control */
 .password-wrap{display:flex;align-items:stretch;gap:8px}.password-wrap input{flex:1;min-width:0}.password-toggle{flex:0 0 44px;border:1px solid var(--border,#d8dee8);border-radius:10px;background:var(--surface,#fff);cursor:pointer;font-size:17px}.password-toggle:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}
+
+/* Keep long edit forms usable on short screens: action buttons remain visible. */
+.modal{max-height:calc(100vh - 40px);overflow-y:auto;overscroll-behavior:contain}.modal-actions{position:sticky;bottom:-25px;background:#fff;padding:14px 0 0;margin-top:18px;z-index:2}.modal form{padding-bottom:2px}@media(max-width:760px){.modal-backdrop{padding:10px}.modal{max-height:calc(100vh - 20px);padding:20px;border-radius:15px}.modal-actions{bottom:-20px}}
