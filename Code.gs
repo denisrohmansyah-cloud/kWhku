@@ -36,7 +36,8 @@ const SHEETS = {
   settings: ['Pengaturan', ['key','value']],
   deviceStatus: ['Data_Perangkat', ['customerId','meterId','status','lastReceivedAt','lastStatusChangeAt','updatedAt']],
   connections: ['Log_Koneksi', ['timestamp','customerId','meterId','status','lastReceivedAt','details']],
-  incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']]
+  incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
+  powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']]
 };
 
 function doGet(e) {
@@ -234,6 +235,66 @@ function adminUpdateCustomer(session, customerId, payload) {
   sh.getRange(row, 8, 1, 1).setValue(monthlyTargetRp);
   sh.getRange(row, 9, 1, 1).setValue(active);
   return {ok:true,customerId:id,message:'Data pelanggan berhasil diperbarui.'};
+}
+
+function tariffForPower_(va) {
+  const n=Number(va);
+  if(n<=450)return 415;
+  if(n<=900)return 605;
+  if(n<=2200)return 1444.70;
+  return 1699.53;
+}
+function getPowerRequests(session) {
+  const s=validateSession_(session);if(!s.ok)return s;
+  let rows=getRows_('Pengajuan_Daya');
+  if(s.role!=='ADMIN')rows=rows.filter(r=>String(r.customerId)===s.customerId);
+  const names={};getRows_('Pelanggan').forEach(c=>names[c.customerId]=c.name);
+  return {ok:true,rows:rows.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(r=>Object.assign({},r,{name:names[r.customerId]||r.customerId,requestedPowerVa:Number(r.requestedPowerVa),currentPowerVa:Number(r.currentPowerVa)}))};
+}
+function submitPowerRequest(session, requestedPowerVa, reason) {
+  const s=validateSession_(session);if(!s.ok)return s;
+  if(s.role!=='PELANGGAN')return {ok:false,message:'Pengajuan hanya tersedia untuk akun pelanggan.'};
+  const allowed=[900,1300,2200,3500,5500,6600,7700,10600];
+  const requested=Number(requestedPowerVa),why=String(reason||'').trim();
+  if(!allowed.includes(requested)||why.length<5||why.length>500)return {ok:false,message:'Pilih daya yang tersedia dan tuliskan alasan minimal 5 karakter.'};
+  const customer=getRows_('Pelanggan').find(c=>String(c.customerId)===s.customerId);
+  if(!customer)return {ok:false,message:'Data pelanggan tidak ditemukan.'};
+  const pending=getRows_('Pengajuan_Daya').some(r=>String(r.customerId)===s.customerId&&String(r.status)==='MENUNGGU');
+  if(pending)return {ok:false,message:'Masih ada pengajuan yang menunggu keputusan Admin.'};
+  if(requested<=Number(customer.powerVa||0))return {ok:false,message:'Daya yang diajukan harus lebih tinggi dari daya saat ini.'};
+  const id='DAYA-'+Utilities.getUuid().slice(0,8).toUpperCase();
+  SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName('Pengajuan_Daya').appendRow([id,new Date(),s.customerId,Number(customer.powerVa||0),requested,why,'MENUNGGU','','', '']);
+  return {ok:true,requestId:id,message:'Pengajuan penambahan daya berhasil dikirim.'};
+}
+function reviewPowerRequest(session, requestId, decision) {
+  const s=validateSession_(session);if(!s.ok||s.role!=='ADMIN')return {ok:false,message:'Akses Admin diperlukan.'};
+  const id=String(requestId||''),status=String(decision||'');
+  if(!['DISETUJUI','DITOLAK'].includes(status))return {ok:false,message:'Keputusan tidak valid.'};
+  const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID),sh=ss.getSheetByName('Pengajuan_Daya'),rows=getRows_('Pengajuan_Daya');
+  const idx=rows.findIndex(r=>String(r.requestId)===id);
+  if(idx<0)return {ok:false,message:'Pengajuan tidak ditemukan.'};
+  const req=rows[idx];if(String(req.status)!=='MENUNGGU')return {ok:false,message:'Pengajuan sudah diproses.'};
+  const tariff=status==='DISETUJUI'?tariffForPower_(req.requestedPowerVa):'';
+  if(status==='DISETUJUI'){
+    const customers=getRows_('Pelanggan'),ci=customers.findIndex(c=>String(c.customerId)===String(req.customerId));
+    if(ci<0)return {ok:false,message:'Pelanggan tidak ditemukan.'};
+    const csh=ss.getSheetByName('Pelanggan'),row=ci+2;
+    csh.getRange(row,6).setValue(Number(req.requestedPowerVa));
+    csh.getRange(row,5).setValue(tariff);
+  }
+  const row=idx+2;sh.getRange(row,7).setValue(status);sh.getRange(row,8).setValue(new Date());sh.getRange(row,9).setValue(s.username);sh.getRange(row,10).setValue(tariff);
+  return {ok:true,message:status==='DISETUJUI'?'Pengajuan disetujui; daya dan tarif telah diperbarui.':'Pengajuan ditolak.'};
+}
+function resetCustomerData(session) {
+  const s=validateSession_(session);if(!s.ok)return s;
+  if(s.role!=='PELANGGAN')return {ok:false,message:'Reset mandiri hanya tersedia untuk pelanggan.'};
+  const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID),sh=ss.getSheetByName('Data_Listrik');
+  if(!sh||sh.getLastRow()<2)return {ok:true,deleted:0,message:'Tidak ada data pembacaan untuk direset.'};
+  const rows=sh.getDataRange().getValues(),header=rows[0],idx=header.indexOf('customerId');
+  if(idx<0)return {ok:false,message:'Kolom customerId tidak ditemukan.'};
+  let deleted=0;
+  for(let i=rows.length-1;i>=1;i--)if(String(rows[i][idx])===s.customerId){sh.deleteRow(i+1);deleted++;}
+  return {ok:true,deleted,message:'Riwayat pembacaan pelanggan berhasil direset.'};
 }
 
 function adminAddTokenBalance(session, customerId, amountRp, note) {
@@ -555,6 +616,10 @@ function handleApi_(body){
       case 'getTokens': return getTokens(a[0]);
       case 'adminCreateCustomer': return adminCreateCustomer(a[0],a[1]||{});
       case 'adminUpdateCustomer': return adminUpdateCustomer(a[0],a[1],a[2]||{});
+      case 'getPowerRequests': return getPowerRequests(a[0]);
+      case 'submitPowerRequest': return submitPowerRequest(a[0],a[1],a[2]);
+      case 'reviewPowerRequest': return reviewPowerRequest(a[0],a[1],a[2]);
+      case 'resetCustomerData': return resetCustomerData(a[0]);
       case 'adminAddTokenBalance': return adminAddTokenBalance(a[0],a[1],a[2],a[3]);
       default: return {ok:false,message:'Operasi tidak dikenal.'};
     }
