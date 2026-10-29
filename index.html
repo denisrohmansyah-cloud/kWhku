@@ -97,7 +97,7 @@
       </div>
       <div class="panel table-panel">
         <div class="panel-head"><div><h3>Riwayat pembacaan sensor</h3><p>Energi kumulatif, daya, tegangan, arus, timestamp, dan waktu diterima server.</p></div><button class="secondary" id="exportMonitoring">⇩ Ekspor CSV</button></div>
-        <div class="filter-row monitoring-filter" style="padding:0 20px"><label class="limit-filter">Tampilkan <select id="monitorLimit" aria-label="Jumlah pembacaan sensor"><option value="5">5 baris</option><option value="20" selected>20 baris</option><option value="50">50 baris</option><option value="100">100 baris</option></select></label><label class="date-filter">Dari <input id="monitorStart" type="date" aria-label="Tanggal mulai data sensor" /></label><label class="date-filter">Sampai <input id="monitorEnd" type="date" aria-label="Tanggal akhir data sensor" /></label></div><div id="dataQuality" class="data-quality" role="status"></div><div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus (A)</th><th>Frekuensi (Hz)</th><th>Power Factor</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
+        <div class="filter-row monitoring-filter" style="padding:0 20px"><label class="limit-filter">Tampilkan <select id="monitorLimit" aria-label="Jumlah pembacaan sensor"><option value="5" selected>5 baris</option><option value="20">20 baris</option><option value="50">50 baris</option><option value="100">100 baris</option></select></label><label class="date-filter">Dari <input id="monitorStart" type="date" aria-label="Tanggal mulai data sensor" /></label><label class="date-filter">Sampai <input id="monitorEnd" type="date" aria-label="Tanggal akhir data sensor" /></label></div><div id="dataQuality" class="data-quality" role="status"></div><div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus (A)</th><th>Frekuensi (Hz)</th><th>Power Factor</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
       </div>
       <div class="panel table-panel monitoring-panel">
         <div class="panel-head"><div><h3>Riwayat koneksi</h3><p>Perubahan status yang tercatat oleh server.</p></div></div>
@@ -127,6 +127,6 @@
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
 <script src="config.js?v=measurement-format-v4"></script>
 <script src="demo.js?v=measurement-format-v4"></script>
-<script src="app.js?v=measurement-format-v4"></script>
+<script src="app.js?v=measurement-format-v5"></script>
 </body>
 </html>
