@@ -140,7 +140,8 @@ function renderChart(){const ds=[];for(let i=6;i>=0;i--){const d=new Date();d.se
   if(mode==='cumulative'){let total=0;v=v.map(x=>(total+=x))}
   const mx=Math.max(0.001,...v);$('chartSubtitle').textContent=mode==='daily'?'Pemakaian energi selama 7 hari terakhir':'Akumulasi energi selama 7 hari terakhir';
   $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmtEnergy(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('');
-  $('chartSummary').textContent=(mode==='daily'?'Total pemakaian 7 hari: ':'Akumulasi pemakaian 7 hari: ')+fmtEnergy(v[v.length-1]||0)+' kWh';
+  const summaryValue=mode==='daily'?v.reduce((sum,value)=>sum+value,0):(v[v.length-1]||0);
+  $('chartSummary').textContent=(mode==='daily'?'Total pemakaian 7 hari: ':'Akumulasi pemakaian 7 hari: ')+fmtEnergy(summaryValue)+' kWh';
 }
 function renderRecent(){$('recentTable').innerHTML=sorted().slice(0,5).map(r=>`<tr><td>${dLabel(r.date)}</td><td><b>${fmtEnergy(r.kwh)} kWh</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada data dari ESP32.</td></tr>'}
 function historyRows(){const q=$('historySearch').value.toLowerCase(),f=$('historyFilter').value,start=$('historyStart').value,end=$('historyEnd').value;
@@ -246,7 +247,8 @@ function renderMonitoring(){
 }
 $('exportMonitoring').onclick=()=>{
   const start=$('monitorStart').value,end=$('monitorEnd').value;
-  const readings=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!start||String(r.timestamp).slice(0,10)>=start)&&(!end||String(r.timestamp).slice(0,10)<=end));
+  const localDay=v=>{const d=new Date(v);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(d):''};
+  const readings=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!start||localDay(r.timestamp)>=start)&&(!end||localDay(r.timestamp)<=end));
   const data=[['timestamp','receivedAt','customerId','meterId','energyKwh','powerW','voltageV','currentA','frequencyHz','powerFactor'],...readings.map(r=>[r.timestamp,r.receivedAt||'',r.customerId,r.meterId,r.energyKwh,r.powerW,r.voltageV,r.currentA,r.frequencyHz,r.powerFactor])];
   const csv=data.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV monitoring diunduh');
