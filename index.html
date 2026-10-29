@@ -6,7 +6,7 @@
 <title>kWh-Ku — Sistem Monitoring Listrik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=admin-customer-edit-20261027">
+<link rel="stylesheet" href="style.css?v=pln-power-requests-20261029">
 </head>
 <body>
 <div id="loginView" class="login-wrap">
@@ -24,7 +24,7 @@
     <div class="brand"><span class="brand-mark">ϟ</span><span>kWh<span>-Ku</span></span></div>
     <h2>Selamat datang!</h2><p class="sub">Masuk untuk melihat informasi penggunaan listrik Anda.</p>
     <form id="loginForm">
-      <div class="field"><label>Masuk sebagai</label><div class="role-switch" id="roleSwitch"><button type="button" class="role-btn active" data-role="customer"><span>🏠</span>Pelanggan</button><button type="button" class="role-btn" data-role="admin"><span>🛡️</span>Admin</button></div><input type="hidden" id="role" value="customer"></div>
+      <input type="hidden" id="role" value="customer">
       <div class="field"><label for="username">Username / ID Pelanggan</label><input id="username" required placeholder="Contoh: PLG-001 atau admin"></div>
       <div class="field"><label for="password">Kata sandi</label><div class="password-wrap"><input id="password" type="password" required placeholder="Masukkan kata sandi" autocomplete="current-password"><button type="button" id="togglePassword" class="password-toggle" aria-label="Tampilkan kata sandi" aria-pressed="false" title="Tampilkan kata sandi">👁</button></div></div>
       <button class="primary login-submit" type="submit">Masuk ke Dashboard <span aria-hidden="true">→</span></button>
@@ -40,29 +40,29 @@
       <button class="active" data-page="dashboard"><span class="ico">▦</span>Dashboard</button>
       <button data-page="calendar"><span class="ico">▣</span>Kalender Pemakaian</button>
       <button data-page="history"><span class="ico">↗</span>Riwayat Penggunaan</button>
-      <button data-page="monitoring"><span class="ico">⌁</span>Monitoring Teknis</button>
+      <button data-page="monitoring"><span class="ico">⌁</span>Monitoring Teknis</button><button data-page="powerRequest"><span class="ico">⚡</span>Pengajuan Penambahan Daya</button>
       <button data-page="customers" class="admin-only hidden"><span class="ico">♙</span>Data Pelanggan</button>
       
     </nav>
     <div class="sidebar-bottom"><div class="profile"><div class="avatar" id="avatar">P</div><div><b id="profileName">Pelanggan</b><small id="profileRole">User Pelanggan</small></div><button class="logout" id="logout" title="Keluar">↪</button></div></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="mobile-menu" id="mobileMenu" aria-label="Buka menu">☰</button><div class="page-title"><h1 id="pageHeading">Dashboard</h1><p id="pageSub">Ringkasan penggunaan listrik Anda</p></div></div><div class="top-actions"><span class="live-pill"><i class="dot"></i> <span id="liveText">TERHUBUNG KE SHEETS</span></span><span class="date-label" id="todayLabel"></span></div></header>
+    <header class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="mobile-menu" id="mobileMenu" aria-label="Buka menu">☰</button><div class="page-title"><h1 id="pageHeading">Dashboard</h1><p id="pageSub">Ringkasan penggunaan listrik Anda</p></div></div><div class="top-actions"><span class="live-pill"><i class="dot"></i> <span id="liveText">MENUNGGU SERVER</span></span><span class="date-label" id="todayLabel"></span></div></header>
     <section id="page-dashboard" class="section active">
-      <div class="welcome"><div><h2 id="welcomeTitle">Halo, Pelanggan! 👋</h2><p id="welcomeSub">Berikut ringkasan konsumsi listrik Anda hari ini.</p></div><div class="welcome-icon">⚡</div></div>
+      <div class="welcome"><div><h2 id="welcomeTitle">Halo, Pelanggan! 👋</h2><p id="welcomeSub">Berikut ringkasan konsumsi listrik Anda hari ini.</p></div><div style="display:flex;align-items:center;gap:12px"><button class="secondary customer-only" id="resetMyData">Reset data saya</button><div class="welcome-icon">⚡</div></div></div>
       <div class="stats">
-        <article class="stat"><div class="stat-head">Biaya bulan ini <span class="stat-icon">💳</span></div><strong id="costStat">Rp 186.450</strong><div class="foot positive">● Estimasi tagihan berjalan</div></article>
-        <article class="stat"><div class="stat-head">Energi terpakai <span class="stat-icon">⚡</span></div><strong id="kwhStat">124,3 kWh</strong><div class="foot">Bulan berjalan</div></article>
-        <article class="stat"><div class="stat-head">Daya saat ini <span class="stat-icon">◉</span></div><strong id="powerStat">325 W</strong><div class="foot positive">● Pemantauan real-time</div></article>
-        <article class="stat"><div class="stat-head" id="tokenStatLabel">Estimasi tagihan berjalan <span class="stat-icon">▤</span></div><strong id="tokenStat">6,2 hari</strong><div class="foot warning">Tarif sesuai golongan pelanggan</div></article>
+        <article class="stat"><div class="stat-head">Biaya bulan ini <span class="stat-icon">💳</span></div><strong id="costStat">Rp 0,00</strong><div class="foot positive">● Estimasi tagihan berjalan</div></article>
+        <article class="stat"><div class="stat-head">Energi terpakai <span class="stat-icon">⚡</span></div><strong id="kwhStat">0,00 kWh</strong><div class="foot">Bulan berjalan</div></article>
+        <article class="stat"><div class="stat-head">Daya saat ini <span class="stat-icon">◉</span></div><strong id="powerStat">0,0 W</strong><div class="foot positive">● Pemantauan real-time</div></article>
+        <article class="stat"><div class="stat-head" id="tokenStatLabel">Estimasi tagihan berjalan <span class="stat-icon">▤</span></div><strong id="tokenStat">0</strong><div class="foot warning">Tarif sesuai golongan pelanggan</div></article>
       </div>
       <div class="grid-two">
         <div class="panel"><div class="panel-head"><div><h3>Grafik konsumsi energi</h3><p id="chartSubtitle">Pemakaian energi selama 7 hari terakhir</p></div><select id="chartMode" aria-label="Jenis grafik"><option value="daily">Pemakaian harian</option><option value="cumulative">Energi kumulatif</option></select></div><div class="chart" id="chart"></div><p id="chartSummary" class="chart-summary">Menyiapkan ringkasan data…</p><button class="text-btn" data-goto="history">Lihat riwayat ↗</button></div>
         <div class="panel"><div class="panel-head"><div><h3>Status penggunaan</h3><p>Informasi kondisi listrik saat ini</p></div><span class="badge" id="statusBadge">● Normal</span></div>
           <div class="usage-status"><div class="status-icon">⚡</div><div class="status-copy"><b>Status meter</b><small id="meterNote">Meter terhubung</small></div><div class="status-value positive" id="meterStatus">Aktif<small>Online</small></div></div>
-          <div class="usage-status"><div class="status-icon">⌁</div><div class="status-copy"><b>Konsumsi hari ini</b><small>Akumulasi energi</small></div><div class="status-value" id="todayKwh">4,8 kWh<small>Hari ini</small></div></div>
-          <div class="usage-status"><div class="status-icon">◷</div><div class="status-copy"><b>Periode tagihan</b><small>Berdasarkan rata-rata pemakaian</small></div><div class="status-value warning" id="tokenDate">15 Okt 2026<small>Perkiraan</small></div></div>
-          <div class="token-card"><div class="token-top"><span>🧾 Estimasi tagihan</span><span id="tokenPercent">62%</span></div><div class="token-number" id="tokenBalance">Rp 93.000</div><div class="progress"><span id="tokenProgress"></span></div><div class="token-note"><span>Biaya energi tercatat</span><span id="tokenUsed">Target biaya bulanan</span></div></div>
+          <div class="usage-status"><div class="status-icon">⌁</div><div class="status-copy"><b>Konsumsi hari ini</b><small>Akumulasi energi</small></div><div class="status-value" id="todayKwh">0,00 kWh<small>Hari ini</small></div></div>
+          <div class="usage-status"><div class="status-icon">◷</div><div class="status-copy"><b>Periode tagihan</b><small>Berdasarkan rata-rata pemakaian</small></div><div class="status-value warning" id="tokenDate">—<small>Perkiraan</small></div></div>
+          <div class="token-card"><div class="token-top"><span>🧾 Estimasi tagihan</span><span id="tokenPercent">0%</span></div><div class="token-number" id="tokenBalance">Rp 0,00</div><div class="progress"><span id="tokenProgress"></span></div><div class="token-note"><span>Biaya energi tercatat</span><span id="tokenUsed">Target biaya bulanan</span></div></div>
         </div>
       </div>
       <div class="panel table-panel"><div class="panel-head"><div><h3 id="recentTitle">Riwayat penggunaan terbaru</h3><p>Ringkasan pemakaian dan estimasi biaya</p></div><button class="text-btn" data-goto="history">Lihat semua →</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Energi</th><th>Estimasi biaya</th><th>Status</th></tr></thead><tbody id="recentTable"></tbody></table></div></div>
@@ -84,11 +84,11 @@
     <section id="page-monitoring" class="section">
       <div class="stats monitoring-stats">
         <article class="stat"><div class="stat-head">Status perangkat</div><strong id="monStatus">—</strong><div class="foot" id="monLastSeen">Menunggu data</div></article>
-        <article class="stat"><div class="stat-head">Tegangan terbaru</div><strong id="monVoltage">— V</strong><div class="foot">Pembacaan terakhir</div></article>
-        <article class="stat"><div class="stat-head">Arus terbaru</div><strong id="monCurrent">— A</strong><div class="foot">Pembacaan terakhir</div></article>
-        <article class="stat"><div class="stat-head">Energi kumulatif</div><strong id="monEnergy">— kWh</strong><div class="foot" id="monPower">Daya — W</div></article>
-        <article class="stat"><div class="stat-head">Power Factor</div><strong id="monPowerFactor">—</strong><div class="foot">Faktor daya (PF)</div></article>
-        <article class="stat"><div class="stat-head">Frekuensi</div><strong id="monFrequency">— Hz</strong><div class="foot">Frekuensi listrik</div></article>
+        <article class="stat"><div class="stat-head">Tegangan terbaru</div><strong id="monVoltage">0,0 V</strong><div class="foot">Pembacaan terakhir</div></article>
+        <article class="stat"><div class="stat-head">Arus terbaru</div><strong id="monCurrent">0,000 A</strong><div class="foot">Pembacaan terakhir</div></article>
+        <article class="stat"><div class="stat-head">Energi kumulatif</div><strong id="monEnergy">0,00 kWh</strong><div class="foot" id="monPower">Daya 0,0 W</div></article>
+        <article class="stat"><div class="stat-head">Power Factor</div><strong id="monPowerFactor">0,00</strong><div class="foot">Faktor daya (PF)</div></article>
+        <article class="stat"><div class="stat-head">Frekuensi</div><strong id="monFrequency">0,0 Hz</strong><div class="foot">Frekuensi listrik</div></article>
       </div>
       <div class="panel table-panel">
         <div class="panel-head"><div><h3>Riwayat pembacaan sensor</h3><p>Energi kumulatif, daya, tegangan, arus, timestamp, dan waktu diterima server.</p></div><button class="secondary" id="exportMonitoring">⇩ Ekspor CSV</button></div>
@@ -104,14 +104,24 @@
       </div>
       <p class="sub monitoring-note">Status Offline berarti tidak ada pembacaan baru selama lebih dari 3 menit. Penyebab spesifik seperti listrik padam atau Wi-Fi terputus tidak dapat dipastikan hanya dari ketiadaan data.</p>
     </section>
+    <section id="page-powerRequest" class="section">
+      <div class="grid-two">
+        <div class="panel"><div class="panel-head"><div><h3>Pengajuan penambahan daya</h3><p>Pilih daya baru dan tuliskan alasan pengajuan.</p></div></div>
+          <form id="powerRequestForm"><div class="field"><label for="requestedPowerVa">Daya yang diajukan</label><select id="requestedPowerVa" required><option value="900">900 VA</option><option value="1300">1.300 VA</option><option value="2200">2.200 VA</option><option value="3500">3.500 VA</option><option value="5500">5.500 VA</option><option value="6600">6.600 VA</option><option value="7700">7.700 VA</option><option value="10600">10.600 VA</option></select></div>
+          <div class="field"><label for="powerRequestReason">Alasan pengajuan</label><textarea id="powerRequestReason" rows="3" maxlength="500" placeholder="Contoh: penambahan peralatan listrik" required></textarea></div><button class="primary" type="submit">Kirim pengajuan</button></form>
+        </div>
+        <div class="panel"><h3>Informasi</h3><p class="sub">Pengajuan perlu disetujui Admin terlebih dahulu. Setelah disetujui, daya dan tarif pelanggan akan diperbarui sesuai golongan yang ditetapkan sistem.</p></div>
+      </div>
+      <div class="panel table-panel"><div class="panel-head"><div><h3>Riwayat pengajuan</h3><p>Admin dapat menyetujui atau menolak pengajuan pelanggan.</p></div></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Pelanggan</th><th>Daya saat ini</th><th>Daya diajukan</th><th>Alasan</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="powerRequestTable"><tr><td colspan="7" class="empty">Memuat pengajuan…</td></tr></tbody></table></div></div>
+    </section>
     <section id="page-customers" class="section">
       <div class="panel table-panel"><div class="panel-head"><div><h3>Daftar pelanggan</h3><p>Kelola pelanggan dan pantau ringkasan penggunaan mereka.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="printCustomers">🖨 Cetak rekap</button><button class="primary" id="addCustomer">＋ Tambah pelanggan</button></div></div><div class="filter-row" style="padding:0 20px;margin-top:18px"><input id="customerSearch" placeholder="Cari nama / ID pelanggan..." /></div><div class="table-wrap"><table><thead><tr><th>ID pelanggan</th><th>Nama pelanggan</th><th>Daya</th><th>Penggunaan bulan ini</th><th>Biaya berjalan</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="customerTable"></tbody></table></div></div>
     </section>
   </main>
 </div>
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
-<script src="config.js?v=admin-customer-edit-20261027"></script>
-<script src="demo.js?v=admin-customer-edit-20261027"></script>
-<script src="app.js?v=admin-customer-edit-20261027"></script>
+<script src="config.js?v=pln-power-requests-20261029"></script>
+<script src="demo.js?v=pln-power-requests-20261029"></script>
+<script src="app.js?v=pln-power-requests-20261029"></script>
 </body>
 </html>
