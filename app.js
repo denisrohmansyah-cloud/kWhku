@@ -1,9 +1,18 @@
 const $=id=>document.getElementById(id);
 const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
-// Raw numeric precision is preserved in calculations and exports. Formatting is presentation-only.
-const raw=n=>{const v=num(n);return v===null?'—':new Intl.NumberFormat('id-ID',{maximumFractionDigits:15,useGrouping:false}).format(v)};
+// Use the shortest exact decimal representation of the JavaScript number: no fixed
+// decimal places and no presentation-time rounding. Grouping affects display only.
+const raw=n=>{
+  const v=num(n);if(v===null)return '—';
+  const text=String(v);
+  if(/[eE]/.test(text))return text.replace('.',',');
+  const negative=text.startsWith('-'),body=negative?text.slice(1):text;
+  const [whole,fraction]=body.split('.');
+  const grouped=whole.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  return (negative?'-':'')+grouped+(fraction===undefined?'':','+fraction);
+};
 const fmt=n=>raw(n);
-const rp=n=>'Rp '+(num(n)??0).toLocaleString('id-ID',{maximumFractionDigits:15});
+const rp=n=>'Rp '+raw(num(n)??0);
 const fmtEnergy=raw,fmtW=raw,fmtV=raw,fmtHz=raw,fmtPF=raw,fmtCurrentA=raw;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
