@@ -37,7 +37,8 @@ const SHEETS = {
   deviceStatus: ['Data_Perangkat', ['customerId','meterId','status','lastReceivedAt','lastStatusChangeAt','updatedAt']],
   connections: ['Log_Koneksi', ['timestamp','customerId','meterId','status','lastReceivedAt','details']],
   incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
-  powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']]
+  powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']],
+  resetPeriods: ['Periode_Reset', ['customerId','resetAt','baselineEnergyKwh','createdAt']]
 };
 
 function doGet(e) {
@@ -140,6 +141,84 @@ function apiLogin_(username, pin) {
 }
 
 /** Called by website. Server re-checks role and customer scope. */
+function ensureResetPeriodsSheet_() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sh = ss.getSheetByName(SHEETS.resetPeriods[0]);
+  if (!sh) {
+    sh = ss.insertSheet(SHEETS.resetPeriods[0]);
+    sh.getRange(1,1,1,SHEETS.resetPeriods[1].length).setValues([SHEETS.resetPeriods[1]);
+    sh.setFrozenRows(1);
+    sh.getRange(1,1,1,SHEETS.resetPeriods[1].length)
+      .setFontWeight('bold').setBackground('#e32636').setFontColor('#ffffff');
+  }
+  return sh;
+}
+
+function getResetBaseline_(customerId) {
+  const rows = getRows_('resetPeriods')
+    .filter(r => String(r.customerId) === String(customerId) &&
+      Number.isFinite(new Date(r.resetAt).getTime()) &&
+      measurementNumber_(r.baselineEnergyKwh) !== null)
+    .sort((a,b) => new Date(b.resetAt) - new Date(a.resetAt));
+  if (!rows.length) return null;
+  return {
+    timestamp: new Date(rows[0].resetAt).toISOString(),
+    energyKwh: Number(rows[0].baselineEnergyKwh)
+  };
+}
+
+function readingsForCalculation_(readingsDesc, customerId) {
+  const baseline = getResetBaseline_(customerId);
+  if (!baseline) return readingsDesc;
+  const resetMs = new Date(baseline.timestamp).getTime();
+  const afterReset = readingsDesc.filter(r => {
+    const t = new Date(r.timestamp).getTime();
+    return Number.isFinite(t) && t > resetMs;
+  });
+  // Synthetic baseline is a calculation anchor only; it is never stored as a sensor reading.
+  return afterReset.concat([{
+    timestamp: baseline.timestamp,
+    energyKwh: baseline.energyKwh,
+    customerId: customerId,
+    meterId: '',
+    receivedAt: baseline.timestamp,
+    source: 'CALCULATION_BASELINE'
+  }]).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+}
+
+function resetCalculationPeriod(session) {
+  const s = validateSession_(session);
+  if (!s.ok) return s;
+  if (s.role !== 'PELANGGAN') return {ok:false,message:'Reset periode hanya tersedia untuk pelanggan.'};
+
+  const readings = getRows_('Data_Listrik')
+    .filter(r => String(r.customerId) === String(s.customerId) &&
+      measurementNumber_(r.energyKwh) !== null &&
+      Number.isFinite(new Date(r.timestamp).getTime()))
+    .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+  if (!readings.length) {
+    return {ok:false,message:'Belum ada pembacaan energi. Reset periode belum dapat dibuat.'};
+  }
+
+  const latest = readings[0];
+  const resetAt = new Date();
+  const baselineEnergyKwh = measurementNumber_(latest.energyKwh);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = ensureResetPeriodsSheet_();
+    sh.appendRow([s.customerId, resetAt, baselineEnergyKwh, resetAt]);
+  } finally {
+    lock.releaseLock();
+  }
+  return {
+    ok:true,
+    resetAt:resetAt.toISOString(),
+    baselineEnergyKwh:baselineEnergyKwh,
+    message:'Periode perhitungan baru dimulai. Counter sensor dan riwayat mentah tidak diubah.'
+  };
+}
+
 function getDashboard(session) {
   const s = validateSession_(session);
   if (!s.ok) return s;
@@ -151,14 +230,15 @@ function getDashboard(session) {
   const monthStart = Utilities.parseDate(monthKey + '-01 00:00:00', CONFIG.TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
   const result = selected.map(c => {
     const rs = allReadings.filter(r => r.customerId === c.customerId);
+    const calcReadings = readingsForCalculation_(rs, c.customerId);
     const latest = rs[0] || null;
-    const energyMonth = energyBetween_(rs, monthStart.getTime(), now.getTime());
+    const energyMonth = energyBetween_(calcReadings, monthStart.getTime(), now.getTime());
     const tariff = Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
     const costMonth = energyMonth * tariff;
     const online = latest && ((now-new Date(latest.receivedAt || latest.timestamp))/60000 <= CONFIG.MAX_AGE_MINUTES_ONLINE);
     const mode = String(c.mode || 'PASCABAYAR').toUpperCase();
     const balance = Number(c.tokenBalanceRp || 0);
-    const dailyCost = estimateDailyCost_(rs, Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH));
+    const dailyCost = estimateDailyCost_(calcReadings, Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH));
     return {
       customerId:c.customerId, name:c.name, meterId:c.meterId, mode,
       tariffRpPerKwh:Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH),
@@ -172,7 +252,7 @@ function getDashboard(session) {
   const ids = selected.map(c=>c.customerId);
   const recent = allReadings.filter(r=>ids.includes(r.customerId)).slice(0,100).map(normalizeReading_);
   const daily=[];
-  selected.forEach(c=>daily.push.apply(daily,dailyUsage_(allReadings.filter(r=>r.customerId===c.customerId),Number(c.tariffRpPerKwh||CONFIG.DEFAULT_TARIFF_RP_PER_KWH),c.customerId)));
+  selected.forEach(c=>daily.push.apply(daily,dailyUsage_(readingsForCalculation_(allReadings.filter(r=>r.customerId===c.customerId),c.customerId),Number(c.tariffRpPerKwh||CONFIG.DEFAULT_TARIFF_RP_PER_KWH),c.customerId)));
   return {ok:true, role:s.role, customers:result, readings:recent, daily:daily, serverTime:now.toISOString()};
 }
 
@@ -629,6 +709,7 @@ function handleApi_(body){
       case 'submitPowerRequest': return submitPowerRequest(a[0],a[1],a[2]);
       case 'reviewPowerRequest': return reviewPowerRequest(a[0],a[1],a[2],a[3]);
       case 'resetCustomerData': return resetCustomerData(a[0]);
+      case 'resetCalculationPeriod': return resetCalculationPeriod(a[0]);
       case 'adminAddTokenBalance': return adminAddTokenBalance(a[0],a[1],a[2],a[3]);
       default: return {ok:false,message:'Operasi tidak dikenal.'};
     }
