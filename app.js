@@ -27,7 +27,8 @@ const truncateDisplay=(n,places)=>{
   return (v<0?'-':'')+grouped+(places?','+fraction:'');
 };
 const fmt=n=>raw(n);
-// Calculated kWh values can expose binary floating-point artifacts (e.g. 0.62400016999999995).\n// Display at most 6 decimal places by truncation only; source values and calculations stay untouched.\nconst fmtEnergy=n=>truncateDisplay(n,6);
+// Calculated kWh values can expose binary floating-point artifacts (e.g. 0.62400016999999995).\n// Display at most 6 decimal places by truncation only; source values and calculations stay untouched.\n// Format tampilan pengukuran sesuai spesifikasi, tanpa pembulatan; data mentah tetap utuh untuk perhitungan/ekspor.
+const fmtEnergy=n=>truncateDisplay(n,2);
 const fmtW=n=>truncateDisplay(n,1);
 const fmtV=n=>truncateDisplay(n,1);
 const fmtHz=n=>truncateDisplay(n,1);
