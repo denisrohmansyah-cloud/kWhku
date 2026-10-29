@@ -21,12 +21,12 @@ function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden'
 async function api(fn,...args){
   if(DEMO)throw Error('Server belum dikonfigurasi. Data demo dinonaktifkan.');
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),12000);
+  const timeout=setTimeout(()=>controller.abort(),5000);
   try{
     const r=await fetch(CFG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args}),signal:controller.signal,cache:'no-store'});
     if(!r.ok)throw Error('Server '+r.status);
     return await r.json();
-  }catch(err){if(err?.name==='AbortError')throw Error('Server terlalu lama merespons (batas 12 detik). Coba lagi sebentar.');throw err}
+  }catch(err){if(err?.name==='AbortError')throw Error('Server belum merespons dalam 5 detik. Periksa koneksi atau coba sinkronkan kembali.');throw err}
   finally{clearTimeout(timeout)}
 }
 const admin=()=>session?.role==='ADMIN';
