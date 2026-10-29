@@ -383,9 +383,9 @@ function doPost(e) {
     const customerId=String(body.customerId||'').trim();
     const customer=getRows_('Pelanggan').find(c=>c.customerId===customerId && c.meterId===deviceId && truthy_(c.active));
     if(!customer) return json_({ok:false,message:'Unknown device/customer'});
-    const energy=Number(body.energyKwh);
-    const voltage=Number(body.voltageV ?? 0), current=Number(body.currentA ?? 0), power=Number(body.powerW ?? 0);
-    const frequency=Number(body.frequencyHz ?? 0), pf=Number(body.powerFactor ?? 0);
+    const energy=measurementNumber_(body.energyKwh);
+    const voltage=measurementNumber_(body.voltageV ?? 0), current=measurementNumber_(body.currentA ?? 0), power=measurementNumber_(body.powerW ?? 0);
+    const frequency=measurementNumber_(body.frequencyHz ?? 0), pf=measurementNumber_(body.powerFactor ?? 0);
     if(!Number.isFinite(energy)||energy<0||energy>1e9||
        ![voltage,current,power,frequency,pf].every(Number.isFinite)||
        voltage<0||voltage>300||current<0||current>1000||power<0||power>1e7||frequency<0||frequency>1000||pf<0||pf>1) {
