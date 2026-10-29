@@ -457,6 +457,9 @@ const RAW_READING_HEADERS_ = [
 const READING_DISPLAY_DECIMALS_ = [1,3,1,2,1,2];
 
 function ensureRawReadingColumns_(sheet) {
+  // Selalu tampilkan kolom mentah L:Q; menghapus hideColumns saja tidak
+  // membatalkan status hidden yang sudah tersimpan di spreadsheet.
+  sheet.showColumns(12, 6);
   const headers = sheet.getRange(1,12,1,6).getValues()[0];
   const ready = RAW_READING_HEADERS_.every((h,i)=>headers[i]===h);
   if (ready) return;
@@ -473,7 +476,6 @@ function ensureRawReadingColumns_(sheet) {
     sheet.getRange(2,12,count,6).setValues(migrated);
     for (let row=2; row<=lastRow; row++) setReadingDisplayRow_(sheet,row);
   }
-  if (!sheet.isColumnHiddenByUser(12)) sheet.hideColumns(12,6);
 }
 
 function setReadingDisplayRow_(sheet,row) {
@@ -545,9 +547,9 @@ function doPost(e) {
         voltage,current,power,energy,frequency,pf
       ]]);
       setReadingDisplayRow_(readingSheet, savedRow);
-      // Kolom raw disembunyikan; nilai asli tetap tersedia dan dipakai perhitungan.
-      if (!readingSheet.isColumnHiddenByUser(12)) readingSheet.hideColumns(12, 6);
-      // Pastikan kolom pengukuran/metadata yang terlihat tidak ikut tersembunyi.
+      // Kolom raw L:Q sengaja dibiarkan terlihat untuk audit data mentah.
+      readingSheet.showColumns(12, 6);
+      // Pastikan kolom H:K terlihat.
       readingSheet.showColumns(8, 4);
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
