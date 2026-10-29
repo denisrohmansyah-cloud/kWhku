@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-const rp=n=>'Rp '+raw(n);
+const rp=n=>'Rp '+(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt=n=>raw(n);
 const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
 const raw=n=>{const v=num(n);return v===null?'0':String(v).replace('.',',')};
