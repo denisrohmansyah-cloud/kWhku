@@ -449,6 +449,44 @@ function lastReadingRow_(sheet) {
   return 1;
 }
 
+// Kolom A:K adalah format kompatibel API. L:Q menyimpan pembacaan sensor mentah.
+// Kolom D:I menampilkan nilai TRUNC (bukan pembulatan); kalkulasi membaca L:Q.
+const RAW_READING_HEADERS_ = [
+  'rawVoltageV','rawCurrentA','rawPowerW','rawEnergyKwh','rawFrequencyHz','rawPowerFactor'
+];
+const READING_DISPLAY_DECIMALS_ = [1,3,1,2,1,2];
+
+function ensureRawReadingColumns_(sheet) {
+  const headers = sheet.getRange(1,12,1,6).getValues()[0];
+  const ready = RAW_READING_HEADERS_.every((h,i)=>headers[i]===h);
+  if (ready) return;
+
+  sheet.getRange(1,12,1,6).setValues([RAW_READING_HEADERS_]);
+  const lastRow = lastReadingRow_(sheet);
+  if (lastRow >= 2) {
+    const count = lastRow - 1;
+    const existingRaw = sheet.getRange(2,12,count,6).getValues();
+    const displayed = sheet.getRange(2,4,count,6).getValues();
+    const migrated = displayed.map((row,i)=>row.map((v,j)=>
+      existingRaw[i][j]!=='' && existingRaw[i][j]!==null ? existingRaw[i][j] : v
+    ));
+    sheet.getRange(2,12,count,6).setValues(migrated);
+    for (let row=2; row<=lastRow; row++) setReadingDisplayRow_(sheet,row);
+  }
+  if (!sheet.isColumnHiddenByUser(12)) sheet.hideColumns(12,6);
+}
+
+function setReadingDisplayRow_(sheet,row) {
+  const rawCols = ['L','M','N','O','P','Q'];
+  const displayCols = [4,5,6,7,8,9];
+  const decimals = READING_DISPLAY_DECIMALS_;
+  const formulas = rawCols.map((col,i)=>'=TRUNC('+col+row+','+decimals[i]+')');
+  formulas.forEach((formula,i)=>{
+    sheet.getRange(row,displayCols[i]).setFormula(formula);
+    sheet.getRange(row,displayCols[i]).setNumberFormat('0.'+'0'.repeat(decimals[i]));
+  });
+}
+
 function doPost(e) {
   try {
     assertConfigured_();
@@ -482,6 +520,9 @@ function doPost(e) {
       const receivedAt = new Date();
       const readingSheet = ss.getSheetByName('Data_Listrik');
       if (!readingSheet) throw new Error('Sheet Data_Listrik tidak ditemukan');
+      // Migrasi kolom raw hanya sekali; nilai sensor asli tetap disimpan terpisah
+      // dari nilai tampilan yang dipotong desimalnya.
+      ensureRawReadingColumns_(readingSheet);
       // Rapikan baris kosong lama; data bertimestamp dipadatkan mulai baris 2.
       compactReadingRowsIfNeeded_(readingSheet);
       const existing = getRows_('Data_Listrik').filter(r => String(r.customerId) === customerId && String(r.meterId) === deviceId)
@@ -498,13 +539,16 @@ function doPost(e) {
         timestamp,customerId,deviceId,voltage,current,power,energy,
         frequency,pf,String(body.source||'ESP32').slice(0,40),receivedAt
       ]]);
-      // Format tampilan: V/A/W/Hz/PF dua desimal, energi kWh tiga desimal.
-      // Nilai sensor asli tetap disimpan; format ini hanya mengubah tampilan di Sheets.
-      readingSheet.getRange(savedRow, 4, 1, 3).setNumberFormat('0.###############'); // Format tampilan saja; nilai numerik tetap utuh
-      readingSheet.getRange(2, 7, savedRow - 1, 1).setNumberFormat('0.###############'); // Format tampilan saja; nilai numerik tetap utuh
-      readingSheet.getRange(savedRow, 8, 1, 2).setNumberFormat('0.###############'); // Format tampilan saja; nilai numerik tetap utuh
-      // Sembunyikan metadata teknis yang tidak digunakan pada tabel penelitian; data tetap tersimpan.
-      if (!readingSheet.isColumnHiddenByUser(8)) readingSheet.hideColumns(8, 4); // H:K
+      // Simpan pembacaan mentah di L:Q, lalu tampilkan nilai hasil TRUNC di D:I.
+      // Perhitungan backend selalu membaca kolom raw agar presisi tidak hilang.
+      readingSheet.getRange(savedRow, 12, 1, 6).setValues([[
+        voltage,current,power,energy,frequency,pf
+      ]]);
+      setReadingDisplayRow_(readingSheet, savedRow);
+      // Kolom raw disembunyikan; nilai asli tetap tersedia dan dipakai perhitungan.
+      if (!readingSheet.isColumnHiddenByUser(12)) readingSheet.hideColumns(12, 6);
+      // Pastikan kolom pengukuran/metadata yang terlihat tidak ikut tersembunyi.
+      readingSheet.showColumns(8, 4);
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
     return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
@@ -559,8 +603,26 @@ function getRows_(key) {
   const [name,headers]=entry;
   const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(name);
   if(!sh||sh.getLastRow()<2) return [];
-  const values=sh.getRange(2,1,sh.getLastRow()-1,headers.length).getValues();
-  return values.map(row=>Object.fromEntries(headers.map((h,i)=>[h,row[i]])));
+  const rowCount=sh.getLastRow()-1;
+  const values=sh.getRange(2,1,rowCount,headers.length).getValues();
+  const rows=values.map(row=>Object.fromEntries(headers.map((h,i)=>[h,row[i]])));
+  // Untuk Data_Listrik, ganti nilai tampilan hasil TRUNC dengan pembacaan raw
+  // dari kolom L:Q saat kolom raw sudah tersedia. Semua kalkulasi memakai raw.
+  if(name==='Data_Listrik' && sh.getLastColumn()>=17) {
+    const rawHeaders=sh.getRange(1,12,1,6).getValues()[0];
+    if(rawHeaders[0]==='rawVoltageV' && rawHeaders[5]==='rawPowerFactor') {
+      const raw=sh.getRange(2,12,rowCount,6).getValues();
+      rows.forEach((r,i)=>{
+        if(raw[i][0]!=='' && raw[i][0]!==null) r.voltageV=Number(raw[i][0]);
+        if(raw[i][1]!=='' && raw[i][1]!==null) r.currentA=Number(raw[i][1]);
+        if(raw[i][2]!=='' && raw[i][2]!==null) r.powerW=Number(raw[i][2]);
+        if(raw[i][3]!=='' && raw[i][3]!==null) r.energyKwh=Number(raw[i][3]);
+        if(raw[i][4]!=='' && raw[i][4]!==null) r.frequencyHz=Number(raw[i][4]);
+        if(raw[i][5]!=='' && raw[i][5]!==null) r.powerFactor=Number(raw[i][5]);
+      });
+    }
+  }
+  return rows;
 }
 function getMonitoring(session, limit) {
   const s = validateSession_(session);
