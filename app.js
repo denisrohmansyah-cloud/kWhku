@@ -272,11 +272,11 @@ function renderMonitoring(){
   const monitorStart=$('monitorStart')?.value||'',monitorEnd=$('monitorEnd')?.value||'';
   const localDay=v=>{const d=new Date(v);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(d):''};
   const allVisible=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||localDay(r.timestamp)>=monitorStart)&&(!monitorEnd||localDay(r.timestamp)<=monitorEnd)).slice().sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
-  const readings=allVisible.slice(0,Math.min(100,Number($('monitorLimit')?.value)||20));
+  const readings=allVisible.slice(0,Math.min(100,Number($('monitorLimit')?.value)||5));
   const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
   const intervals=stamps.slice(1).map((t,i)=>t-stamps[i]).filter(t=>t>0),gaps=intervals.filter(t=>t>90000).length;
   const avgInterval=intervals.length?intervals.reduce((sum,t)=>sum+t,0)/intervals.length/1000:0;
-  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?fmt(avgInterval)+' detik':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'')+(monitoringError?' <span class="monitoring-error">Peringatan API: '+esc(monitoringError)+'</span>':'');
+  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?truncateDisplay(avgInterval,1)+' detik':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'')+(monitoringError?' <span class="monitoring-error">Peringatan API: '+esc(monitoringError)+'</span>':'');
   const connections=(monitoring.connections||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,5);
   const incidents=(monitoring.incidents||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,5);
   const devices=(monitoring.devices||[]).filter(r=>admin()||r.customerId===session?.customerId);
