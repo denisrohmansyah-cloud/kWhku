@@ -39,7 +39,7 @@ const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'shor
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const dLabel=k=>dText(k+'T00:00:00');
 const CFG=window.KWHKU_CONFIG||{},DEMO=!CFG.API_URL;
-let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],connections:[],incidents:[],devices:[]},monitoringError='',selId='',shown=new Date();shown.setDate(1);
+let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],connections:[],incidents:[],devices:[]},monitoringError='',monitoringLoading=false,selId='',shown=new Date();shown.setDate(1);
 
 function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3500)}
 // Keep the blocking synchronization overlay visible for at most 10 seconds.
@@ -133,7 +133,7 @@ async function refresh(showLoading=false){
     if(!admin()&&!nextCustomers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun pelanggan tidak ditemukan atau tidak aktif.');}
     customers=nextCustomers;daily=nextDaily;tokens=[];
     // Load dashboard first so the main view is usable without waiting for technical monitoring.
-    let monitoringLoaded=false;
+    let monitoringLoaded=false;monitoringLoading=true;monitoringError='';
     const monitoringTask=api('getMonitoring',session,500).then(mon=>{
       if(mon?.ok&&Array.isArray(mon.readings)){
         monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};
@@ -152,6 +152,7 @@ async function refresh(showLoading=false){
     $('liveText').textContent='MEMUAT DATA MONITORING…';
     renderAll();
     await monitoringTask;
+    monitoringLoading=false;
     if(session){
       $('liveText').textContent=monitoringLoaded
         ?'TERHUBUNG DENGAN SERVER'
@@ -290,7 +291,7 @@ function renderMonitoring(){
   $('monPowerFactor').textContent=latest?fmtPF(latest.powerFactor):'—';
   $('monEnergy').textContent=latest?fmtEnergy(latest.energyKwh)+' kWh':'— kWh';
   $('monPower').textContent='Daya '+(latest?fmtW(latest.powerW)+' W':'— W');
-  $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmtW(r.powerW)+' W</td><td>'+fmtV(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmtHz(r.frequencyHz)+' Hz</td><td>'+fmtPF(r.powerFactor)+'</td></tr>').join('')||'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>';
+  $('monitorReadings').innerHTML=monitoringLoading?'<tr><td colspan="9" class="empty">Sedang memuat pembacaan sensor dari server…</td></tr>':readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmtW(r.powerW)+' W</td><td>'+fmtV(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmtHz(r.frequencyHz)+' Hz</td><td>'+fmtPF(r.powerFactor)+'</td></tr>').join('')||(monitoringError?'<tr><td colspan="9" class="empty">Data monitoring gagal dimuat. Periksa endpoint Google Apps Script dan deployment.</td></tr>':'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>');
   $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
 }
