@@ -1,15 +1,10 @@
 const $=id=>document.getElementById(id);
-const rp=n=>'Rp '+(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmt=n=>raw(n);
 const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
-const raw=n=>{const v=num(n);return v===null?'0':String(v).replace('.',',')};
-const truncate=(n,places)=>{const v=num(n);if(v===null)return '0';const factor=10**places;const cut=Math.trunc((v+Math.sign(v)*Number.EPSILON)*factor)/factor;return String(cut).replace('.',',')};
-const fmtEnergy=n=>truncate(n,2);
-const fmtW=n=>truncate(n,1);
-const fmtV=n=>truncate(n,1);
-const fmtHz=n=>truncate(n,1);
-const fmtPF=n=>truncate(n,2);
-const fmtCurrentA=n=>truncate(n,3);
+// Raw numeric precision is preserved in calculations and exports. Formatting is presentation-only.
+const raw=n=>{const v=num(n);return v===null?'—':new Intl.NumberFormat('id-ID',{maximumFractionDigits:12,useGrouping:false}).format(v)};
+const fmt=n=>raw(n);
+const rp=n=>'Rp '+(num(n)??0).toLocaleString('id-ID',{maximumFractionDigits:12});
+const fmtEnergy=raw,fmtW=raw,fmtV=raw,fmtHz=raw,fmtPF=raw,fmtCurrentA=raw;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -130,8 +125,8 @@ function renderAll(){if(!session)return;
   $('tokenStat').textContent=admin()?customers.length+' pelanggan':rp(c?.tariffRpPerKwh||0)+'/kWh';
   $('tokenDate').innerHTML=admin()?'—<small>Tagihan bulanan</small>':'Akhir bulan<small>Periode tagihan</small>';
   $('tokenBalance').textContent=c?rp(cost):rp(sum('costMonthRp'));
-  const pct=target>0?Math.min(100,Math.round(cost/target*100)):0;
-  $('tokenPercent').textContent=target?pct+'% dari target':'Target belum diatur';
+  const pct=target>0?Math.min(100,cost/target*100):0;
+  $('tokenPercent').textContent=target?fmt(pct)+'% dari target':'Target belum diatur';
   $('tokenProgress').style.width=pct+'%';
   $('tokenUsed').textContent=target?'Target biaya: '+rp(target):'Target biaya belum diatur';
   const on=customers.filter(x=>x.online).length,heavy=L&&c.powerVa&&L.powerW>c.powerVa*.8;
@@ -226,7 +221,7 @@ function renderMonitoring(){
   const monitorStart=$('monitorStart')?.value||'',monitorEnd=$('monitorEnd')?.value||'';
   const localDay=v=>{const d=new Date(v);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(d):''};
   const allVisible=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||localDay(r.timestamp)>=monitorStart)&&(!monitorEnd||localDay(r.timestamp)<=monitorEnd)).slice().sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
-  const readings=allVisible.slice(0,5);
+  const readings=allVisible.slice(0,Math.min(100,Number($('monitorLimit')?.value)||20));
   const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
   const intervals=stamps.slice(1).map((t,i)=>t-stamps[i]).filter(t=>t>0),gaps=intervals.filter(t=>t>90000).length;
   const avgInterval=intervals.length?intervals.reduce((sum,t)=>sum+t,0)/intervals.length/1000:0;
@@ -254,9 +249,9 @@ $('exportMonitoring').onclick=()=>{
   const readings=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!start||String(r.timestamp).slice(0,10)>=start)&&(!end||String(r.timestamp).slice(0,10)<=end));
   const data=[['timestamp','receivedAt','customerId','meterId','energyKwh','powerW','voltageV','currentA','frequencyHz','powerFactor'],...readings.map(r=>[r.timestamp,r.receivedAt||'',r.customerId,r.meterId,r.energyKwh,r.powerW,r.voltageV,r.currentA,r.frequencyHz,r.powerFactor])];
   const csv=data.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV monitoring diunduh');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV monitoring diunduh');
 };
-$('monitorStart').onchange=renderMonitoring;$('monitorEnd').onchange=renderMonitoring;
+$('monitorStart').onchange=renderMonitoring;$('monitorEnd').onchange=renderMonitoring;$('monitorLimit')?.addEventListener('change',renderMonitoring);
 
 // ---- Modal admin
 function modal(html){$('modalRoot').innerHTML=`<div class="modal-backdrop" id="bd"><div class="modal">${html}</div></div>`;$('bd').onclick=e=>{if(e.target.id==='bd')$('modalRoot').innerHTML=''}}
@@ -280,7 +275,7 @@ function printRecap(){const cs=admin()?customers:customers.filter(c=>c.customerI
 $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...historyRows().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV diunduh')};
+  a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV diunduh')};
 setInterval(()=>{if(session)refresh().catch(()=>{})},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
 
  
