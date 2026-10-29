@@ -407,7 +407,7 @@ function doPost(e) {
       const existing = getRows_('Data_Listrik').filter(r => String(r.customerId) === customerId && String(r.meterId) === deviceId)
         .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp));
       const previous = existing[0];
-      if (previous && energy + 0.0005 < Number(previous.energyKwh || 0)) {
+      if (previous && timestamp.getTime() >= new Date(previous.timestamp).getTime() && energy < Number(previous.energyKwh || 0)) {
         logIncident_(customerId, deviceId, 'ENERGY_COUNTER_DROP', 'WARNING',
           'Energi kumulatif turun dari '+Number(previous.energyKwh||0)+' menjadi '+energy+' kWh. Periksa reset meter atau urutan data.', '');
       }
