@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="assets/kwhku-logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=logo-refresh-20261029">
+<link rel="stylesheet" href="style.css?v=reset-under-info-20261029">
 </head>
 <body>
 <div id="loginView" class="login-wrap">
@@ -66,7 +66,7 @@
           <div class="token-card"><div class="token-top"><span>🧾 Estimasi tagihan</span><span id="tokenPercent">0%</span></div><div class="token-number" id="tokenBalance">Rp 0,00</div><div class="progress"><span id="tokenProgress"></span></div><div class="token-note"><span>Biaya energi tercatat</span><span id="tokenUsed">Target biaya bulanan</span></div></div>
         </div>
       </div>
-      <div class="panel table-panel"><div class="panel-head"><div><h3 id="recentTitle">Riwayat penggunaan terbaru</h3><p>Ringkasan pemakaian dan estimasi biaya</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="secondary customer-only" id="resetMyData">Reset data saya</button><button class="text-btn" data-goto="history">Lihat semua →</button></div></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Energi</th><th>Estimasi biaya</th><th>Status</th></tr></thead><tbody id="recentTable"></tbody></table></div></div>
+      <div class="panel table-panel"><div class="panel-head"><div><h3 id="recentTitle">Riwayat penggunaan terbaru</h3><p>Ringkasan pemakaian dan estimasi biaya</p></div><button class="text-btn" data-goto="history">Lihat semua →</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Energi</th><th>Estimasi biaya</th><th>Status</th></tr></thead><tbody id="recentTable"></tbody></table></div></div>
     </section>
     <section id="page-calendar" class="section">
       <div class="panel"><div class="panel-head"><div><h3>Kalender pemakaian listrik</h3><p>Pilih tanggal untuk melihat aktivitas konsumsi energi.</p></div><span class="badge">Data Google Sheets</span></div><div class="calendar-head"><button id="prevMonth">←</button><b id="monthTitle"></b><button id="nextMonth">→</button></div><div class="calendar-grid" id="calendarGrid"></div><div class="day-detail" id="dayDetail">Ketuk tanggal untuk melihat pemakaian dan biaya harian.</div><p class="sub" style="font-size:12px;margin:18px 0 0">● Titik merah menandakan terdapat data penggunaan pada tanggal tersebut. Kalender menandai tanggal yang memiliki pembacaan tersimpan.</p></div>
@@ -111,7 +111,7 @@
           <form id="powerRequestForm"><div class="field"><label for="requestedPowerVa">Daya yang diajukan</label><select id="requestedPowerVa" required><option value="900">900 VA</option><option value="1300">1.300 VA</option><option value="2200">2.200 VA</option><option value="3500">3.500 VA</option><option value="5500">5.500 VA</option><option value="6600">6.600 VA</option><option value="7700">7.700 VA</option><option value="10600">10.600 VA</option></select></div>
           <div class="field"><label for="powerRequestReason">Alasan pengajuan</label><textarea id="powerRequestReason" rows="3" maxlength="500" placeholder="Contoh: penambahan peralatan listrik" required></textarea></div><button class="primary" type="submit">Kirim pengajuan</button></form>
         </div>
-        <div class="panel"><h3>Informasi</h3><p class="sub">Pengajuan perlu disetujui Admin terlebih dahulu. Setelah disetujui, daya dan tarif pelanggan akan diperbarui sesuai golongan yang ditetapkan sistem.</p></div>
+        <div class="panel power-info-panel"><h3>Informasi</h3><p class="sub">Pengajuan perlu disetujui Admin terlebih dahulu. Setelah disetujui, daya dan tarif pelanggan akan diperbarui sesuai golongan yang ditetapkan sistem.</p><div class="power-info-actions"><button class="secondary customer-only" id="resetMyData">Reset data saya</button></div></div>
       </div>
       <div class="panel table-panel"><div class="panel-head"><div><h3>Riwayat pengajuan</h3><p>Admin dapat menyetujui atau menolak pengajuan pelanggan.</p></div></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Pelanggan</th><th>Daya saat ini</th><th>Daya diajukan</th><th>Alasan</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="powerRequestTable"><tr><td colspan="7" class="empty">Memuat pengajuan…</td></tr></tbody></table></div></div>
     </section>
@@ -121,8 +121,8 @@
   </main>
 </div>
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
-<script src="config.js?v=logo-refresh-20261029"></script>
-<script src="demo.js?v=logo-refresh-20261029"></script>
-<script src="app.js?v=logo-refresh-20261029"></script>
+<script src="config.js?v=reset-under-info-20261029"></script>
+<script src="demo.js?v=reset-under-info-20261029"></script>
+<script src="app.js?v=reset-under-info-20261029"></script>
 </body>
 </html>
