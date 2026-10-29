@@ -52,7 +52,10 @@ function beginSyncOverlay(){
 async function api(fn,...args){
   if(DEMO)throw Error('Server belum dikonfigurasi. Data demo dinonaktifkan.');
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),5000);
+  // Monitoring reads several Sheets tabs and can take longer than a dashboard summary.
+  // Give the monitoring endpoint more time so the UI does not report false data failures.
+  const timeoutMs=fn==='getMonitoring'?20000:10000;
+  const timeout=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const r=await fetch(CFG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args}),signal:controller.signal,cache:'no-store'});
     if(!r.ok)throw Error('Server '+r.status);
@@ -130,14 +133,31 @@ async function refresh(showLoading=false){
     if(!admin()&&!nextCustomers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun pelanggan tidak ditemukan atau tidak aktif.');}
     customers=nextCustomers;daily=nextDaily;tokens=[];
     // Load dashboard first so the main view is usable without waiting for technical monitoring.
+    let monitoringLoaded=false;
     const monitoringTask=api('getMonitoring',session,500).then(mon=>{
-      if(mon?.ok&&Array.isArray(mon.readings)){monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};monitoringError='';}
-      else {monitoringError=mon?.message||'Respons monitoring tidak sesuai format.';console.warn('Monitoring tidak tersedia:',monitoringError)}
-    }).catch(err=>{monitoringError='Gagal memuat monitoring: '+(err?.message||String(err));console.warn(monitoringError,err)});
+      if(mon?.ok&&Array.isArray(mon.readings)){
+        monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};
+        monitoringError='';monitoringLoaded=true;
+      }else{
+        monitoringError=mon?.message||'Respons monitoring tidak sesuai format.';
+        console.warn('Monitoring tidak tersedia:',monitoringError);
+      }
+    }).catch(err=>{
+      monitoringError='Gagal memuat monitoring: '+(err?.message||String(err));
+      console.warn(monitoringError,err);
+    });
 
-    $('liveText').textContent='TERHUBUNG DENGAN SERVER';renderAll();
-    // Do not block the entire page on the slower technical-monitoring endpoint.
-    monitoringTask.then(()=>{if(session)renderAll()});
+    // Dashboard summary may render while monitoring is loading, but do not claim
+    // the whole site is ready until the technical data endpoint has responded.
+    $('liveText').textContent='MEMUAT DATA MONITORING…';
+    renderAll();
+    await monitoringTask;
+    if(session){
+      $('liveText').textContent=monitoringLoaded
+        ?'TERHUBUNG DENGAN SERVER'
+        :'SERVER TERHUBUNG · DATA MONITORING GAGAL';
+      renderAll();
+    }
   }catch(err){const badge=$('liveText');if(badge)badge.textContent='SERVER TIDAK MERESPONS';console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
   finally{refreshInFlight=false;if(showLoading)$('appView').classList.remove('is-loading')}
 }
