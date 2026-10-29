@@ -79,9 +79,16 @@ $('togglePassword').onclick=()=>{const input=$('password'),show=input.type==='pa
 // ---- Login
 document.querySelectorAll('.role-btn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.role-btn').forEach(x=>x.classList.toggle('active',x===b));$('role').value=b.dataset.role});
 $('demoHint').textContent='Masuk dengan akun yang terdaftar.';
-$('liveText').textContent=DEMO?'MENUNGGU SERVER':'TERHUBUNG DENGAN SERVER';
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Memeriksa…';
-  try{const res=await api('login',$('username').value.trim(),$('password').value);
+function setConnectionStatus(state,text){
+  const pill=document.querySelector('.live-pill');
+  const label=$('liveText');
+  if(label)label.textContent=text;
+  if(pill)pill.classList.remove('is-connected','is-connecting','is-error');
+  if(pill&&state)pill.classList.add(state);
+}
+setConnectionStatus(DEMO?'is-error':'is-connecting',DEMO?'SERVER BELUM DIKONFIGURASI':'MENGHUBUNGKAN KE SERVER');
+$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Memeriksa…';setConnectionStatus('is-connecting','MENGHUBUNGKAN KE SERVER');
+  try{const res=await api('login',$('username').value.trim(),$('password').value);setConnectionStatus('is-connected','TERHUBUNG DENGAN SERVER');
     if(!res?.ok){toast(res?.message||'Login gagal.');return}
     
     session=res;try{sessionStorage.setItem('kwhku_session',JSON.stringify(res))}catch(storageError){console.warn('Sesi tidak dapat disimpan di tab ini',storageError)}selId='';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');const finishSync=beginSyncOverlay();
@@ -90,7 +97,7 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=
     $('welcomeTitle').textContent='Halo, '+(admin()?'Admin':res.name.split(' ')[0])+'! 👋';
     $('welcomeSub').textContent=admin()?'Pantau data listrik seluruh pelanggan.':'Berikut ringkasan penggunaan listrik Anda.';
     try{await refresh(false);showPage('dashboard')}finally{finishSync()}
-  }catch(err){toast('Gagal terhubung: '+(err.message||err))}finally{btn.disabled=false;btn.innerHTML='Masuk ke Dashboard <span aria-hidden="true">→</span>'}});
+  }catch(err){setConnectionStatus('is-error','GAGAL TERHUBUNG KE SERVER');toast('Gagal terhubung: '+(err.message||err))}finally{btn.disabled=false;btn.innerHTML='Masuk ke Dashboard <span aria-hidden="true">→</span>'}});
 $('logout').onclick=()=>{session=null;try{sessionStorage.removeItem('kwhku_session')}catch(_){}customers=[];daily=[];tokens=[];$('password').value='';$('appView').classList.add('hidden');$('loginView').classList.remove('hidden')};
 // Restore the authenticated session after a page refresh in the same browser tab.
 (async function restoreSessionAfterReload(){
@@ -150,17 +157,16 @@ async function refresh(showLoading=false){
 
     // Dashboard summary may render while monitoring is loading, but do not claim
     // the whole site is ready until the technical data endpoint has responded.
-    $('liveText').textContent='MEMUAT DATA MONITORING…';
+    setConnectionStatus('is-connecting','MENGHUBUNGKAN KE SERVER');
     renderAll();
     await monitoringTask;
     monitoringLoading=false;
     if(session){
-      $('liveText').textContent=monitoringLoaded
-        ?'TERHUBUNG DENGAN SERVER'
-        :'SERVER TERHUBUNG · DATA MONITORING GAGAL';
+      if(monitoringLoaded)setConnectionStatus('is-connected','TERHUBUNG DENGAN SERVER');
+      else setConnectionStatus('is-error','GAGAL MEMUAT DATA SERVER');
       renderAll();
     }
-  }catch(err){const badge=$('liveText');if(badge)badge.textContent='SERVER TIDAK MERESPONS';console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
+  }catch(err){setConnectionStatus('is-error','GAGAL TERHUBUNG KE SERVER');console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
   finally{refreshInFlight=false;if(showLoading)$('appView').classList.remove('is-loading')}
 }
 
