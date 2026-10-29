@@ -216,3 +216,13 @@ input,select,textarea{max-width:100%;min-width:0}
   font-variant-numeric:tabular-nums;
   overflow-wrap:anywhere;
 }
+
+/* Status koneksi server: hijau = terhubung, kuning = menghubungkan, merah = gagal. */
+.live-pill{transition:background-color .2s ease,border-color .2s ease,color .2s ease}
+.live-pill.is-connected{background:#eaf8f1;border-color:#b9e8d1;color:#147a53}
+.live-pill.is-connected .dot{background:#15966a;box-shadow:0 0 0 4px #15966a20}
+.live-pill.is-connecting{background:#fff7df;border-color:#f2d88c;color:#98670b}
+.live-pill.is-connecting .dot{background:#e0a323;box-shadow:0 0 0 4px #e0a32325;animation:connectionPulse 1.1s ease-in-out infinite}
+.live-pill.is-error{background:#fff0f1;border-color:#ffc9ce;color:#bd2028}
+.live-pill.is-error .dot{background:#dc3038;box-shadow:0 0 0 4px #dc303820}
+@keyframes connectionPulse{50%{opacity:.45}}
