@@ -2,8 +2,12 @@ const $=id=>document.getElementById(id);
 const rp=n=>'Rp '+(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt=n=>(Number(n)||0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
-const fmtEnergy=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:3,maximumFractionDigits:3});
-const fmtCurrentA=n=>{const v=num(n);return v===null?'—':v.toLocaleString('id-ID',{minimumFractionDigits:0,maximumFractionDigits:3})};
+const fmtEnergy=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtW=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fmtV=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fmtHz=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fmtPF=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtCurrentA=n=>(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:3,maximumFractionDigits:3});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -13,7 +17,7 @@ let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],connect
 
 function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3500)}
 async function api(fn,...args){
-  if(DEMO){if(!window.DemoAPI[fn])throw Error('Operasi tidak tersedia');return window.DemoAPI[fn](...args)}
+  if(DEMO)throw Error('Server belum dikonfigurasi. Data demo dinonaktifkan.');
   const r=await fetch(CFG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})});
   if(!r.ok)throw Error('Server '+r.status);return r.json();
 }
@@ -30,15 +34,15 @@ $('togglePassword').onclick=()=>{const input=$('password'),show=input.type==='pa
 
 // ---- Login
 document.querySelectorAll('.role-btn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.role-btn').forEach(x=>x.classList.toggle('active',x===b));$('role').value=b.dataset.role});
-$('demoHint').innerHTML=DEMO?'<b>MODE DEMO</b> (data contoh).<br>Pelanggan: <b>PLG-001</b> / <b>123456</b><br>Admin: <b>admin</b> / <b>admin123</b>':'Masuk dengan akun yang terdaftar di Google Sheets.';
-$('liveText').textContent=DEMO?'MODE DEMO':'TERHUBUNG KE SHEETS';
+$('demoHint').textContent='Masuk dengan akun yang terdaftar.';
+$('liveText').textContent=DEMO?'MENUNGGU SERVER':'TERHUBUNG DENGAN SERVER';
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Memeriksa…';
   try{const res=await api('login',$('username').value.trim(),$('password').value);
     if(!res?.ok){toast(res?.message||'Login gagal.');return}
-    if(res.role!==($('role').value==='admin'?'ADMIN':'PELANGGAN')){toast('Pilihan role tidak sesuai dengan akun ini.');return}
+    
     session=res;selId='';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
-    $('profileName').textContent=res.name;$('profileRole').textContent=admin()?'Administrator':'Pelanggan';$('avatar').textContent=(res.name||'U')[0].toUpperCase();
-    document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.toggle('hidden',!admin()));
+    $('profileName').textContent=res.name;$('profileRole').textContent=admin()?'Administrator':'Pelanggan';$('appView').classList.toggle('admin-session',admin());$('avatar').textContent=(res.name||'U')[0].toUpperCase();
+    document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.toggle('hidden',!admin()));document.querySelectorAll('.customer-only').forEach(el=>el.classList.toggle('hidden',admin()));
     $('welcomeTitle').textContent='Halo, '+(admin()?'Admin':res.name.split(' ')[0])+'! 👋';
     $('welcomeSub').textContent=admin()?'Pantau data listrik seluruh pelanggan.':'Berikut ringkasan penggunaan listrik Anda.';
     await refresh();showPage('dashboard');
@@ -47,19 +51,19 @@ $('logout').onclick=()=>{session=null;customers=[];daily=[];tokens=[];$('passwor
 $('mobileMenu').onclick=()=>$('sidebar').classList.toggle('open');
 
 // ---- Navigasi
-const titles={dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],monitoring:['Monitoring Teknis','Pembacaan sensor, status koneksi, dan gangguan'],customers:['Data Pelanggan','Kelola pelanggan terdaftar']};
+const titles={dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],monitoring:['Monitoring Teknis','Pembacaan sensor, status koneksi, dan gangguan'],customers:['Data Pelanggan','Kelola pelanggan terdaftar'],powerRequest:['Pengajuan Penambahan Daya','Ajukan perubahan daya dan pantau status persetujuan']};
 function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));$('page-'+p).classList.add('active');
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
   if(p!=='history'&&selId){selId='';$('historySearch').value=''}
-  renderAll()}
+  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e))}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
 let refreshInFlight=false;
 async function refresh(){
-  if(!session||refreshInFlight)return;refreshInFlight=true;
+  if(!session||refreshInFlight)return;refreshInFlight=true;$('appView').classList.add('is-loading');
   try{
     const res=await api('getDashboard',session);
     if(!res?.ok){if(/Sesi/i.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
@@ -74,7 +78,7 @@ async function refresh(){
     }catch(err){monitoringError='Gagal memuat monitoring: '+(err?.message||String(err));console.warn(monitoringError,err)}
     $('liveText').textContent=DEMO?'MODE DEMO':'TERHUBUNG KE SHEETS';renderAll();
   }catch(err){const badge=$('liveText');if(badge)badge.textContent=DEMO?'MODE DEMO':'GAGAL MEMPERBARUI';console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
-  finally{refreshInFlight=false}
+  finally{refreshInFlight=false;$('appView').classList.remove('is-loading')}
 }
 
 // ---- Render
@@ -82,7 +86,7 @@ function renderAll(){if(!session)return;
   $('todayLabel').textContent=new Date().toLocaleDateString('id-ID',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
   const c=admin()?null:customers.find(x=>x.customerId===session.customerId),L=c?.latest,sum=k=>customers.reduce((a,x)=>a+(Number(x[k])||0),0);
   $('costStat').textContent=rp(c?c.costMonthRp:sum('costMonthRp'));$('kwhStat').textContent=fmtEnergy(c?c.energyMonthKwh:sum('energyMonthKwh'))+' kWh';
-  $('powerStat').textContent=fmt(c?L?.powerW:customers.reduce((a,x)=>a+(Number(x.latest?.powerW)||0),0))+' W';
+  $('powerStat').textContent=fmtW(c?L?.powerW:customers.reduce((a,x)=>a+(Number(x.latest?.powerW)||0),0))+' W';
   const today=dk(new Date());$('todayKwh').innerHTML=fmtEnergy(rows().filter(r=>r.date===today).reduce((a,r)=>a+r.kwh,0))+' kWh<small>Hari ini</small>';
   const target=Number(c?.monthlyTargetRp)||0, cost=Number(c?.costMonthRp)||0;
   $('tokenStatLabel').innerHTML=(admin()?'Pelanggan aktif':'Tarif listrik')+' <span class="stat-icon">▤</span>';
@@ -198,13 +202,13 @@ function renderMonitoring(){
   const timeLabel=v=>v?new Date(v).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'medium'}):'—';
   $('monStatus').innerHTML='<span class="badge '+(status==='ONLINE'?'':'amber')+'">'+esc(status)+'</span>';
   $('monLastSeen').textContent=latest?'Terakhir diterima '+timeLabel(latest.receivedAt||latest.timestamp):'Belum ada data';
-  $('monVoltage').textContent=latest?fmt(latest.voltageV)+' V':'— V';
+  $('monVoltage').textContent=latest?fmtV(latest.voltageV)+' V':'— V';
   $('monCurrent').textContent=latest?fmtCurrentA(latest.currentA)+' A':'— A';
-  $('monFrequency').textContent=latest?fmt(latest.frequencyHz)+' Hz':'— Hz';
-  $('monPowerFactor').textContent=latest?fmt(latest.powerFactor):'—';
+  $('monFrequency').textContent=latest?fmtHz(latest.frequencyHz)+' Hz':'— Hz';
+  $('monPowerFactor').textContent=latest?fmtPF(latest.powerFactor):'—';
   $('monEnergy').textContent=latest?fmtEnergy(latest.energyKwh)+' kWh':'— kWh';
   $('monPower').textContent='Daya '+(latest?fmt(latest.powerW)+' W':'— W');
-  $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmt(r.powerW)+' W</td><td>'+fmt(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmt(r.frequencyHz)+' Hz</td><td>'+fmt(r.powerFactor)+'</td></tr>').join('')||'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>';
+  $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmt(r.powerW)+' W</td><td>'+fmt(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmt(r.frequencyHz)+' Hz</td><td>'+fmtPF(r.powerFactor)+'</td></tr>').join('')||'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>';
   $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
 }
@@ -241,3 +245,18 @@ $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh',
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV diunduh')};
 setInterval(()=>{if(session)refresh().catch(()=>{})},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
+
+ 
+// ---- Pengajuan penambahan daya
+let powerRequests=[];
+async function loadPowerRequests(){
+ if(!session)return;
+ const res=await api('getPowerRequests',session);
+ if(!res?.ok)throw Error(res?.message||'Pengajuan gagal dimuat');
+ powerRequests=Array.isArray(res.rows)?res.rows:[];
+ const visible=powerRequests;
+ $('powerRequestTable').innerHTML=visible.map(r=>`<tr><td>${r.createdAt?new Date(r.createdAt).toLocaleString('id-ID'):'—'}</td><td>${esc(r.customerId)} · ${esc(r.name||r.customerId)}</td><td>${fmt(r.currentPowerVa)} VA</td><td>${fmt(r.requestedPowerVa)} VA</td><td>${esc(r.reason||'—')}</td><td><span class="badge ${r.status==='DISETUJUI'?'':'amber'}">${esc(r.status)}</span></td><td>${admin()&&r.status==='MENUNGGU'?'<button class="small-btn" data-approve="'+esc(r.requestId)+'">Setujui</button> <button class="small-btn" data-reject="'+esc(r.requestId)+'">Tolak</button>':'—'}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Belum ada pengajuan.</td></tr>';
+}
+$('powerRequestForm').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('button[type=submit');btn.disabled=true;btn.textContent='Mengirim…';try{const res=await api('submitPowerRequest',session,Number($('requestedPowerVa').value),$('powerRequestReason').value.trim());if(!res?.ok)throw Error(res?.message||'Pengajuan gagal');$('powerRequestReason').value='';toast('Pengajuan berhasil dikirim');await loadPowerRequests()}catch(err){toast(err.message||String(err))}finally{btn.disabled=false;btn.textContent='Kirim pengajuan'}};
+$('powerRequestTable').onclick=async e=>{const a=e.target.closest('[data-approve]'),r=e.target.closest('[data-reject]');if(!a&&!r)return;const id=(a||r).dataset[a?'approve':'reject'];const action=a?'DISETUJUI':'DITOLAK';if(!confirm((a?'Setujui dan terapkan daya serta tarif baru?':'Tolak pengajuan ini?')))return;try{const res=await api('reviewPowerRequest',session,id,action);if(!res?.ok)throw Error(res?.message||'Gagal memproses');toast(res.message||'Pengajuan diproses');await refresh();await loadPowerRequests()}catch(err){toast(err.message||String(err))}};
+$('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan menghapus riwayat pembacaan dan rekap pemakaian akun Anda dari sistem. Tindakan ini tidak dapat dibatalkan. Lanjutkan?'))return;if(!confirm('Konfirmasi terakhir: hapus semua data pembacaan listrik milik akun Anda?'))return;try{const res=await api('resetCustomerData',session);if(!res?.ok)throw Error(res?.message||'Reset gagal');toast('Data pembacaan berhasil direset');await refresh()}catch(err){toast(err.message||String(err))}};
