@@ -63,7 +63,7 @@ document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dat
 
 let refreshInFlight=false;
 async function refresh(){
-  if(!session||refreshInFlight)return;refreshInFlight=true;$('appView').classList.add('is-loading');
+  if(!session||refreshInFlight)return;refreshInFlight=true; // Background refresh must not block the whole interface.
   try{
     const res=await api('getDashboard',session);
     if(!res?.ok){if(/Sesi/i.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
