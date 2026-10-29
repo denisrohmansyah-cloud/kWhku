@@ -585,18 +585,27 @@ function normalizeReading_(r) {
     energyKwh:Number(r.energyKwh||0),frequencyHz:Number(r.frequencyHz||0),powerFactor:Number(r.powerFactor||0),
     source:r.source||'ESP32'};
 }
+function measurementNumber_(value) {
+  if (value === null || value === undefined ||
+      (typeof value === 'string' && value.trim() === '')) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function estimateDailyCost_(readings,tariff) {
   if(!Array.isArray(readings)||readings.length<2||!(Number(tariff)>0))return 0;
   const ordered=readings.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)),newest=ordered[ordered.length-1],oldest=ordered[Math.max(0,ordered.length-21)];
-  const t0=new Date(oldest.timestamp).getTime(),t1=new Date(newest.timestamp).getTime(),delta=Number(newest.energyKwh)-Number(oldest.energyKwh),hours=(t1-t0)/3600000;
+  const t0=new Date(oldest.timestamp).getTime(),t1=new Date(newest.timestamp).getTime();
+  const e0=measurementNumber_(oldest.energyKwh),e1=measurementNumber_(newest.energyKwh);
+  const delta=e0===null||e1===null?NaN:e1-e0,hours=(t1-t0)/3600000;
   if(!Number.isFinite(t0)||!Number.isFinite(t1)||hours<=0||!Number.isFinite(delta)||delta<0)return 0;
   return delta/hours*24*Number(tariff);
 }
 function energyBetween_(readingsDesc,startMs,endMs){
   if(!Array.isArray(readingsDesc)||readingsDesc.length<2||!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs)return 0;
   const ordered=readingsDesc.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));let total=0;
-  for(let i=1;i<ordered.length;i++){const a=ordered[i-1],b=ordered[i],t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime(),e0=Number(a.energyKwh),e1=Number(b.energyKwh);
-    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(e0)||!Number.isFinite(e1)||e1<e0)continue;
+  for(let i=1;i<ordered.length;i++){const a=ordered[i-1],b=ordered[i],t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime(),e0=measurementNumber_(a.energyKwh),e1=measurementNumber_(b.energyKwh);
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||e0===null||e1===null||e1<e0)continue;
     const overlap=Math.max(0,Math.min(t1,endMs)-Math.max(t0,startMs));if(overlap>0)total+=(e1-e0)*overlap/(t1-t0)}
   return total;
 }
@@ -644,7 +653,7 @@ function dailyUsage_(readingsDesc,tariff,customerId){
   for(let i=1;i<asc.length;i++){
     const r0=asc[i-1],r1=asc[i];
     const t0=new Date(r0.timestamp).getTime(),t1=new Date(r1.timestamp).getTime();
-    const e0=Number(r0.energyKwh),e1=Number(r1.energyKwh),delta=e1-e0;
+    const e0=measurementNumber_(r0.energyKwh),e1=measurementNumber_(r1.energyKwh),delta=e0===null||e1===null?NaN:e1-e0;
     if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(delta)||delta<0) continue;
     let cursor=t0;
     while(cursor<t1){
