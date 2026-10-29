@@ -67,10 +67,10 @@ async function refresh(){
   try{
     const res=await api('getDashboard',session);
     if(!res?.ok){if(/Sesi/i.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
-    const nextCustomers=(Array.isArray(res.customers)?res.customers:[]).filter(c=>admin()||String(c.mode||'').toUpperCase()==='PASCABAYAR');
+    const nextCustomers=Array.isArray(res.customers)?res.customers:[];
     const allowed=new Set(nextCustomers.map(c=>c.customerId));
     const nextDaily=(Array.isArray(res.daily)?res.daily:[]).filter(r=>allowed.has(r.customerId)&&r.date&&num(r.kwh)!==null&&num(r.costRp)!==null);
-    if(!admin()&&!nextCustomers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun ini bukan pelanggan pascabayar yang terdaftar.')}
+    if(!admin()&&!nextCustomers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun pelanggan tidak ditemukan atau tidak aktif.');}
     customers=nextCustomers;daily=nextDaily;tokens=[];
     try{const mon=await api('getMonitoring',session,500);
       if(mon?.ok&&Array.isArray(mon.readings)){monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};monitoringError='';}
