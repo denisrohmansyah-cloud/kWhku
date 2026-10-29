@@ -42,14 +42,31 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=
   try{const res=await api('login',$('username').value.trim(),$('password').value);
     if(!res?.ok){toast(res?.message||'Login gagal.');return}
     
-    session=res;selId='';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
+    session=res;try{sessionStorage.setItem('kwhku_session',JSON.stringify(res))}catch(storageError){console.warn('Sesi tidak dapat disimpan di tab ini',storageError)}selId='';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
     $('profileName').textContent=res.name;$('profileRole').textContent=admin()?'Administrator':'Pelanggan';$('appView').classList.toggle('admin-session',admin());$('avatar').textContent=(res.name||'U')[0].toUpperCase();
     document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.toggle('hidden',!admin()));document.querySelectorAll('.customer-only').forEach(el=>el.classList.toggle('hidden',admin()));
     $('welcomeTitle').textContent='Halo, '+(admin()?'Admin':res.name.split(' ')[0])+'! 👋';
     $('welcomeSub').textContent=admin()?'Pantau data listrik seluruh pelanggan.':'Berikut ringkasan penggunaan listrik Anda.';
     await refresh(true);showPage('dashboard');
   }catch(err){toast('Gagal terhubung: '+(err.message||err))}finally{btn.disabled=false;btn.innerHTML='Masuk ke Dashboard <span aria-hidden="true">→</span>'}});
-$('logout').onclick=()=>{session=null;customers=[];daily=[];tokens=[];$('password').value='';$('appView').classList.add('hidden');$('loginView').classList.remove('hidden')};
+$('logout').onclick=()=>{session=null;try{sessionStorage.removeItem('kwhku_session')}catch(_){}customers=[];daily=[];tokens=[];$('password').value='';$('appView').classList.add('hidden');$('loginView').classList.remove('hidden')};
+// Restore the authenticated session after a page refresh in the same browser tab.
+(async function restoreSessionAfterReload(){
+  let saved=null;
+  try{saved=JSON.parse(sessionStorage.getItem('kwhku_session')||'null')}catch(_){}
+  if(!saved||!saved.ok)return;
+  session=saved;selId='';
+  $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
+  $('profileName').textContent=saved.name||saved.customerId||'Pengguna';
+  $('profileRole').textContent=admin()?'Administrator':'Pelanggan';
+  $('appView').classList.toggle('admin-session',admin());
+  $('avatar').textContent=(saved.name||'U')[0].toUpperCase();
+  document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.toggle('hidden',!admin()));
+  document.querySelectorAll('.customer-only').forEach(el=>el.classList.toggle('hidden',admin()));
+  $('welcomeTitle').textContent='Halo, '+(admin()?'Admin':(saved.name||'Pelanggan').split(' ')[0])+'! 👋';
+  $('welcomeSub').textContent=admin()?'Pantau data listrik seluruh pelanggan.':'Berikut ringkasan penggunaan listrik Anda.';
+  await refresh(true);showPage('dashboard');
+})();
 $('mobileMenu').onclick=()=>$('sidebar').classList.toggle('open');
 
 // ---- Navigasi
