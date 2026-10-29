@@ -30,6 +30,7 @@ async function api(fn,...args){
   finally{clearTimeout(timeout)}
 }
 const admin=()=>session?.role==='ADMIN';
+let refreshInFlight=false;
 const rows=()=>daily.filter(r=>admin()?(!selId||r.customerId===selId):r.customerId===session.customerId);
 const sorted=()=>rows().slice().sort((a,b)=>b.date.localeCompare(a.date)||a.customerId.localeCompare(b.customerId));
 const cust=id=>customers.find(c=>c.customerId===id)||{customerId:id,name:id};
@@ -86,7 +87,6 @@ function showPage(p){if(p==='customers'&&!admin())p='dashboard';
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
-let refreshInFlight=false;
 async function refresh(showLoading=false){
   if(!session||refreshInFlight)return;refreshInFlight=true;
   if(showLoading)$('appView').classList.add('is-loading');
