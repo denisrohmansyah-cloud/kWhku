@@ -41,3 +41,7 @@
 @keyframes kwhspin{to{transform:rotate(360deg)}}
 .customer-only{display:none}.app:not(.admin-session) .customer-only{display:inline-flex}
 textarea{width:100%;border:1px solid #dedfe4;border-radius:12px;padding:14px 15px;font:inherit;resize:vertical}
+
+/* Logo image with transparent background */
+.brand-mark{width:42px;height:42px;object-fit:contain;display:block;background:transparent!important;color:inherit;border-radius:0!important;box-shadow:none!important;padding:0}
+.login-visual .brand-mark{width:46px;height:46px}
