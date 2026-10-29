@@ -20,8 +20,14 @@ let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],connect
 function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3500)}
 async function api(fn,...args){
   if(DEMO)throw Error('Server belum dikonfigurasi. Data demo dinonaktifkan.');
-  const r=await fetch(CFG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})});
-  if(!r.ok)throw Error('Server '+r.status);return r.json();
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
+  try{
+    const r=await fetch(CFG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args}),signal:controller.signal,cache:'no-store'});
+    if(!r.ok)throw Error('Server '+r.status);
+    return await r.json();
+  }catch(err){if(err?.name==='AbortError')throw Error('Server terlalu lama merespons (batas 12 detik). Coba lagi sebentar.');throw err}
+  finally{clearTimeout(timeout)}
 }
 const admin=()=>session?.role==='ADMIN';
 const rows=()=>daily.filter(r=>admin()?(!selId||r.customerId===selId):r.customerId===session.customerId);
@@ -92,11 +98,15 @@ async function refresh(showLoading=false){
     const nextDaily=(Array.isArray(res.daily)?res.daily:[]).filter(r=>allowed.has(r.customerId)&&r.date&&num(r.kwh)!==null&&num(r.costRp)!==null);
     if(!admin()&&!nextCustomers.some(c=>c.customerId===session.customerId)){session=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');throw Error('Akun pelanggan tidak ditemukan atau tidak aktif.');}
     customers=nextCustomers;daily=nextDaily;tokens=[];
-    try{const mon=await api('getMonitoring',session,500);
+    // Load dashboard first so the main view is usable without waiting for technical monitoring.
+    const monitoringTask=api('getMonitoring',session,500).then(mon=>{
       if(mon?.ok&&Array.isArray(mon.readings)){monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};monitoringError='';}
       else {monitoringError=mon?.message||'Respons monitoring tidak sesuai format.';console.warn('Monitoring tidak tersedia:',monitoringError)}
-    }catch(err){monitoringError='Gagal memuat monitoring: '+(err?.message||String(err));console.warn(monitoringError,err)}
+    }).catch(err=>{monitoringError='Gagal memuat monitoring: '+(err?.message||String(err));console.warn(monitoringError,err)});
+
     $('liveText').textContent='TERHUBUNG DENGAN SERVER';renderAll();
+    // Do not block the entire page on the slower technical-monitoring endpoint.
+    monitoringTask.then(()=>{if(session)renderAll()});
   }catch(err){const badge=$('liveText');if(badge)badge.textContent='SERVER TIDAK MERESPONS';console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
   finally{refreshInFlight=false;if(showLoading)$('appView').classList.remove('is-loading')}
 }
