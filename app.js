@@ -1,19 +1,35 @@
 const $=id=>document.getElementById(id);
 const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
-// Use the shortest exact decimal representation of the JavaScript number: no fixed
-// decimal places and no presentation-time rounding. Grouping affects display only.
+// Formatting is display-only. Truncate (never round) to the requested measurement precision.
 const raw=n=>{
   const v=num(n);if(v===null)return '—';
   const text=String(v);
   if(/[eE]/.test(text))return text.replace('.',',');
   const negative=text.startsWith('-'),body=negative?text.slice(1):text;
-  const [whole,fraction]=body.split('.');
+  const [whole,fraction='']=body.split('.');
   const grouped=whole.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-  return (negative?'-':'')+grouped+(fraction===undefined?'':','+fraction);
+  return (negative?'-':'')+grouped+(fraction?','+fraction:'');
+};
+const truncateDisplay=(n,places)=>{
+  const v=num(n);if(v===null)return '—';
+  const text=String(Math.abs(v));
+  if(/[eE]/.test(text)) {
+    const factor=10**places,cut=Math.trunc(Math.abs(v)*factor)/factor;
+    return (v<0?'-':'')+cut.toFixed(places).replace('.',',');
+  }
+  const [whole,fraction='']=text.split('.');
+  const clipped=fraction.slice(0,places).padEnd(places,'0');
+  const grouped=whole.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  return (v<0?'-':'')+grouped+(places?','+clipped:'');
 };
 const fmt=n=>raw(n);
 const rp=n=>'Rp '+raw(num(n)??0);
-const fmtEnergy=raw,fmtW=raw,fmtV=raw,fmtHz=raw,fmtPF=raw,fmtCurrentA=raw;
+const fmtEnergy=n=>truncateDisplay(n,2);
+const fmtW=n=>truncateDisplay(n,1);
+const fmtV=n=>truncateDisplay(n,1);
+const fmtHz=n=>truncateDisplay(n,1);
+const fmtPF=n=>truncateDisplay(n,2);
+const fmtCurrentA=n=>truncateDisplay(n,3);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
