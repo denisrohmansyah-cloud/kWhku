@@ -1,9 +1,9 @@
 const $=id=>document.getElementById(id);
 const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
 // Raw numeric precision is preserved in calculations and exports. Formatting is presentation-only.
-const raw=n=>{const v=num(n);return v===null?'—':new Intl.NumberFormat('id-ID',{maximumFractionDigits:12,useGrouping:false}).format(v)};
+const raw=n=>{const v=num(n);return v===null?'—':new Intl.NumberFormat('id-ID',{maximumFractionDigits:15,useGrouping:false}).format(v)};
 const fmt=n=>raw(n);
-const rp=n=>'Rp '+(num(n)??0).toLocaleString('id-ID',{maximumFractionDigits:12});
+const rp=n=>'Rp '+(num(n)??0).toLocaleString('id-ID',{maximumFractionDigits:15});
 const fmtEnergy=raw,fmtW=raw,fmtV=raw,fmtHz=raw,fmtPF=raw,fmtCurrentA=raw;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
