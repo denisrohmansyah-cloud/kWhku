@@ -115,7 +115,7 @@
           <form id="powerRequestForm"><div class="field"><label for="requestedPowerVa">Daya yang diajukan</label><select id="requestedPowerVa" required><option value="900">900 VA</option><option value="1300">1.300 VA</option><option value="2200">2.200 VA</option><option value="3500">3.500 VA</option><option value="5500">5.500 VA</option><option value="6600">6.600 VA</option><option value="7700">7.700 VA</option><option value="10600">10.600 VA</option></select></div>
           <div class="field"><label for="powerRequestReason">Alasan pengajuan</label><textarea id="powerRequestReason" rows="3" maxlength="500" placeholder="Contoh: penambahan peralatan listrik" required></textarea></div><button class="primary" type="submit">Kirim pengajuan</button></form>
         </div>
-        <div class="panel power-info-panel"><h3>Informasi</h3><p class="sub">Pengajuan perlu disetujui Admin terlebih dahulu. Setelah disetujui, daya dan tarif pelanggan akan diperbarui sesuai golongan yang ditetapkan sistem.</p><div class="power-info-actions"><button class="secondary customer-only" id="resetMyData">Reset data saya</button></div></div>
+        <div class="panel power-info-panel"><h3>Informasi</h3><p class="sub">Pengajuan perlu disetujui Admin terlebih dahulu. Setelah disetujui, daya dan tarif pelanggan akan diperbarui sesuai golongan yang ditetapkan sistem.</p><div class="power-info-actions"><button class="secondary customer-only" id="resetCalculationPeriod">Reset periode perhitungan</button><button class="secondary customer-only" id="resetMyData">Reset riwayat data saya</button></div></div>
       </div>
       <div class="panel table-panel"><div class="panel-head"><div><h3>Riwayat pengajuan</h3><p>Admin dapat menyetujui atau menolak pengajuan pelanggan.</p></div></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Pelanggan</th><th>Daya saat ini</th><th>Daya diajukan</th><th>Alasan</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="powerRequestTable"><tr><td colspan="7" class="empty">Memuat pengajuan…</td></tr></tbody></table></div></div>
     </section>
@@ -125,8 +125,8 @@
   </main>
 </div>
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
-<script src="config.js?v=measurement-format-v4"></script>
-<script src="demo.js?v=measurement-format-v4"></script>
-<script src="app.js?v=measurement-format-v5"></script>
+<script src="config.js?v=reset-period-v6"></script>
+<script src="demo.js?v=reset-period-v6"></script>
+<script src="app.js?v=reset-period-v6"></script>
 </body>
 </html>
