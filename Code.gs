@@ -162,11 +162,11 @@ function getDashboard(session) {
     return {
       customerId:c.customerId, name:c.name, meterId:c.meterId, mode,
       tariffRpPerKwh:Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH),
-      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,6),
-      costMonthRp:round_(costMonth,2), latest:latest ? normalizeReading_(latest) : null,
+      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:energyMonth,
+      costMonthRp:costMonth, latest:latest ? normalizeReading_(latest) : null,
       online:!!online, tokenBalanceRp:balance,
       estimatedDaysLeft: mode === 'PRABAYAR' && dailyCost > 0 ? round_(balance/dailyCost,1) : null,
-      dailyCostRp:round_(dailyCost,2)
+      dailyCostRp:dailyCost
     };
   });
   const ids = selected.map(c=>c.customerId);
@@ -420,9 +420,9 @@ function doPost(e) {
       ]]);
       // Format tampilan: V/A/W/Hz/PF dua desimal, energi kWh tiga desimal.
       // Nilai sensor asli tetap disimpan; format ini hanya mengubah tampilan di Sheets.
-      readingSheet.getRange(savedRow, 4, 1, 3).setNumberFormat('0.00'); // D:F
-      readingSheet.getRange(2, 7, savedRow - 1, 1).setNumberFormat('0.000'); // G: energyKwh, termasuk data lama
-      readingSheet.getRange(savedRow, 8, 1, 2).setNumberFormat('0.00'); // H:I
+      readingSheet.getRange(savedRow, 4, 1, 3).setNumberFormat('0.000000000000'); // Format tampilan saja; nilai numerik tetap utuh
+      readingSheet.getRange(2, 7, savedRow - 1, 1).setNumberFormat('0.000000000000'); // Format tampilan saja; nilai numerik tetap utuh
+      readingSheet.getRange(savedRow, 8, 1, 2).setNumberFormat('0.000000000000'); // Format tampilan saja; nilai numerik tetap utuh
       // Sembunyikan metadata teknis yang tidak digunakan pada tabel penelitian; data tetap tersimpan.
       if (!readingSheet.isColumnHiddenByUser(8)) readingSheet.hideColumns(8, 4); // H:K
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
