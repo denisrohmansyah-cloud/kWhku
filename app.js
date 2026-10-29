@@ -1,19 +1,15 @@
 const $=id=>document.getElementById(id);
-const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
-// Use the shortest exact decimal representation of the JavaScript number: no fixed
-// decimal places and no presentation-time rounding. Grouping affects display only.
-const raw=n=>{
-  const v=num(n);if(v===null)return '—';
-  const text=String(v);
-  if(/[eE]/.test(text))return text.replace('.',',');
-  const negative=text.startsWith('-'),body=negative?text.slice(1):text;
-  const [whole,fraction]=body.split('.');
-  const grouped=whole.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-  return (negative?'-':'')+grouped+(fraction===undefined?'':','+fraction);
-};
+const rp=n=>'Rp '+(num(n)??0).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt=n=>raw(n);
-const rp=n=>'Rp '+raw(num(n)??0);
-const fmtEnergy=raw,fmtW=raw,fmtV=raw,fmtHz=raw,fmtPF=raw,fmtCurrentA=raw;
+const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
+const raw=n=>{const v=num(n);return v===null?'0':String(v).replace('.',',')};
+const truncate=(n,places)=>{const v=num(n);if(v===null)return '0';const factor=10**places;const cut=Math.trunc((v+Math.sign(v)*Number.EPSILON)*factor)/factor;return String(cut).replace('.',',')};
+const fmtEnergy=n=>truncate(n,2);
+const fmtW=n=>truncate(n,1);
+const fmtV=n=>truncate(n,1);
+const fmtHz=n=>truncate(n,1);
+const fmtPF=n=>truncate(n,2);
+const fmtCurrentA=n=>truncate(n,3);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -134,8 +130,8 @@ function renderAll(){if(!session)return;
   $('tokenStat').textContent=admin()?customers.length+' pelanggan':rp(c?.tariffRpPerKwh||0)+'/kWh';
   $('tokenDate').innerHTML=admin()?'—<small>Tagihan bulanan</small>':'Akhir bulan<small>Periode tagihan</small>';
   $('tokenBalance').textContent=c?rp(cost):rp(sum('costMonthRp'));
-  const pct=target>0?Math.min(100,cost/target*100):0;
-  $('tokenPercent').textContent=target?fmt(pct)+'% dari target':'Target belum diatur';
+  const pct=target>0?Math.min(100,Math.round(cost/target*100)):0;
+  $('tokenPercent').textContent=target?pct+'% dari target':'Target belum diatur';
   $('tokenProgress').style.width=pct+'%';
   $('tokenUsed').textContent=target?'Target biaya: '+rp(target):'Target biaya belum diatur';
   const on=customers.filter(x=>x.online).length,heavy=L&&c.powerVa&&L.powerW>c.powerVa*.8;
@@ -149,8 +145,7 @@ function renderChart(){const ds=[];for(let i=6;i>=0;i--){const d=new Date();d.se
   if(mode==='cumulative'){let total=0;v=v.map(x=>(total+=x))}
   const mx=Math.max(0.001,...v);$('chartSubtitle').textContent=mode==='daily'?'Pemakaian energi selama 7 hari terakhir':'Akumulasi energi selama 7 hari terakhir';
   $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmtEnergy(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('');
-  const summaryValue=mode==='daily'?v.reduce((sum,value)=>sum+value,0):(v[v.length-1]||0);
-  $('chartSummary').textContent=(mode==='daily'?'Total pemakaian 7 hari: ':'Akumulasi pemakaian 7 hari: ')+fmtEnergy(summaryValue)+' kWh';
+  $('chartSummary').textContent=(mode==='daily'?'Total pemakaian 7 hari: ':'Akumulasi pemakaian 7 hari: ')+fmtEnergy(v[v.length-1]||0)+' kWh';
 }
 function renderRecent(){$('recentTable').innerHTML=sorted().slice(0,5).map(r=>`<tr><td>${dLabel(r.date)}</td><td><b>${fmtEnergy(r.kwh)} kWh</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada data dari ESP32.</td></tr>'}
 function historyRows(){const q=$('historySearch').value.toLowerCase(),f=$('historyFilter').value,start=$('historyStart').value,end=$('historyEnd').value;
@@ -231,7 +226,7 @@ function renderMonitoring(){
   const monitorStart=$('monitorStart')?.value||'',monitorEnd=$('monitorEnd')?.value||'';
   const localDay=v=>{const d=new Date(v);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(d):''};
   const allVisible=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||localDay(r.timestamp)>=monitorStart)&&(!monitorEnd||localDay(r.timestamp)<=monitorEnd)).slice().sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
-  const readings=allVisible.slice(0,Math.min(100,Number($('monitorLimit')?.value)||20));
+  const readings=allVisible.slice(0,5);
   const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
   const intervals=stamps.slice(1).map((t,i)=>t-stamps[i]).filter(t=>t>0),gaps=intervals.filter(t=>t>90000).length;
   const avgInterval=intervals.length?intervals.reduce((sum,t)=>sum+t,0)/intervals.length/1000:0;
@@ -256,13 +251,12 @@ function renderMonitoring(){
 }
 $('exportMonitoring').onclick=()=>{
   const start=$('monitorStart').value,end=$('monitorEnd').value;
-  const localDay=v=>{const d=new Date(v);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(d):''};
-  const readings=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!start||localDay(r.timestamp)>=start)&&(!end||localDay(r.timestamp)<=end));
+  const readings=(monitoring.readings||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!start||String(r.timestamp).slice(0,10)>=start)&&(!end||String(r.timestamp).slice(0,10)<=end));
   const data=[['timestamp','receivedAt','customerId','meterId','energyKwh','powerW','voltageV','currentA','frequencyHz','powerFactor'],...readings.map(r=>[r.timestamp,r.receivedAt||'',r.customerId,r.meterId,r.energyKwh,r.powerW,r.voltageV,r.currentA,r.frequencyHz,r.powerFactor])];
   const csv=data.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV monitoring diunduh');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='kWh-Ku-monitoring.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV monitoring diunduh');
 };
-$('monitorStart').onchange=renderMonitoring;$('monitorEnd').onchange=renderMonitoring;$('monitorLimit')?.addEventListener('change',renderMonitoring);
+$('monitorStart').onchange=renderMonitoring;$('monitorEnd').onchange=renderMonitoring;
 
 // ---- Modal admin
 function modal(html){$('modalRoot').innerHTML=`<div class="modal-backdrop" id="bd"><div class="modal">${html}</div></div>`;$('bd').onclick=e=>{if(e.target.id==='bd')$('modalRoot').innerHTML=''}}
@@ -286,7 +280,7 @@ function printRecap(){const cs=admin()?customers:customers.filter(c=>c.customerI
 $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...historyRows().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV diunduh')};
+  a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV diunduh')};
 setInterval(()=>{if(session)refresh().catch(()=>{})},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
 
  
