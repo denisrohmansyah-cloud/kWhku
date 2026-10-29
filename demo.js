@@ -8,12 +8,12 @@ window.DemoAPI=(()=>{
   C.forEach(c=>U[c.customerId]={pin:'123456',role:'PELANGGAN',name:c.name,customerId:c.customerId});
   const R=[],end=Date.now(),sess={};
   C.forEach((c,i)=>{let e=120+i*35;for(let h=720;h>=0;h--){const t=end-h*36e5,hr=new Date(t).getHours(),w=hr>=18&&hr<=22?1.6:hr>=6&&hr<=9?1.1:.5,inc=(.25+i*.08)*w*(.7+rnd()*.6);e+=inc;
-    R.push({timestamp:new Date(t).toISOString(),customerId:c.customerId,meterId:c.meterId,voltageV:+(218+rnd()*6).toFixed(1),currentA:+(inc*1000/220).toFixed(2),powerW:Math.round(inc*1000),energyKwh:+e.toFixed(3),frequencyHz:50,powerFactor:.9,source:'DEMO'})}});
+    R.push({timestamp:new Date(t).toISOString(),customerId:c.customerId,meterId:c.meterId,voltageV:218+rnd()*6,currentA:inc*1000/220,powerW:inc*1000,energyKwh:e,frequencyHz:50,powerFactor:.9,source:'DEMO'})}});
   const TK=[{createdAt:new Date(end-5*864e5).toISOString(),customerId:'PLG-001',name:'Budi Santoso',amountRp:100000,tokenCode:'4821-0937-5512-6640-1198',note:'Saldo awal'},
             {createdAt:new Date(end-3*864e5).toISOString(),customerId:'PLG-003',name:'Agus Pratama',amountRp:50000,tokenCode:'7302-1184-9961-0275-3341',note:'Saldo awal'}];
   const code=()=>Array.from({length:5},()=>pad(Math.floor(rnd()*100))+pad(Math.floor(rnd()*100))).join('-');
   const daily=(rs,c)=>{const m={};for(let i=1;i<rs.length;i++){const d=rs[i].energyKwh-rs[i-1].energyKwh;if(d<0)continue;const k=dk(new Date(rs[i].timestamp));m[k]=(m[k]||0)+d}
-    return Object.keys(m).sort().map(k=>({customerId:c.customerId,date:k,kwh:+m[k].toFixed(3),costRp:Math.round(m[k]*c.tariffRpPerKwh)}))};
+    return Object.keys(m).sort().map(k=>({customerId:c.customerId,date:k,kwh:m[k],costRp:m[k]*c.tariffRpPerKwh}))};
   const me=s=>s&&sess[s.token];
   const bad={ok:false,message:'Sesi tidak valid. Silakan masuk kembali.'};
   return {
@@ -24,7 +24,7 @@ window.DemoAPI=(()=>{
       const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);let dl=[];const out=sel.map(c=>{
         const rs=R.filter(r=>r.customerId===c.customerId),L=rs[rs.length-1],mr=rs.filter(r=>new Date(r.timestamp)>=ms),before=rs.filter(r=>new Date(r.timestamp)<ms).slice(-1)[0],e=mr.length?Math.max(0,L.energyKwh-(before?before.energyKwh:mr[0].energyKwh)):0,d=daily(rs,c);dl=dl.concat(d);
         const l7=d.slice(-7),dc=l7.length?l7.reduce((a,x)=>a+x.costRp,0)/l7.length:0;
-        return {...c,energyMonthKwh:+e.toFixed(3),costMonthRp:Math.round(e*c.tariffRpPerKwh),latest:L,online:true,estimatedDaysLeft:c.mode==='PRABAYAR'&&dc>0?+(c.tokenBalanceRp/dc).toFixed(1):null,dailyCostRp:Math.round(dc)}});
+        return {...c,energyMonthKwh:e,costMonthRp:e*c.tariffRpPerKwh,latest:L,online:true,estimatedDaysLeft:c.mode==='PRABAYAR'&&dc>0?c.tokenBalanceRp/dc:null,dailyCostRp:dc}});
       return {ok:true,role:u.role,customers:out,readings:[],daily:dl,serverTime:new Date().toISOString()}},
     getTokens(s){const u=me(s);if(!u)return bad;return {ok:true,rows:TK.filter(t=>u.role==='ADMIN'||t.customerId===u.customerId).slice().reverse()}},
     adminCreateCustomer(s,p){const u=me(s);if(!u||u.role!=='ADMIN')return {ok:false,message:'Akses admin diperlukan.'};
