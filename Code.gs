@@ -165,7 +165,7 @@ function getDashboard(session) {
       powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:energyMonth,
       costMonthRp:costMonth, latest:latest ? normalizeReading_(latest) : null,
       online:!!online, tokenBalanceRp:balance,
-      estimatedDaysLeft: mode === 'PRABAYAR' && dailyCost > 0 ? round_(balance/dailyCost,1) : null,
+      estimatedDaysLeft: mode === 'PRABAYAR' && dailyCost > 0 ? balance/dailyCost : null,
       dailyCostRp:dailyCost
     };
   });
