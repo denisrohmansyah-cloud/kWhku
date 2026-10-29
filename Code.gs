@@ -33,7 +33,11 @@ const SHEETS = {
   readings: ['Data_Listrik', ['timestamp','customerId','meterId','voltageV','currentA','powerW','energyKwh','frequencyHz','powerFactor','source','receivedAt']],
   tokens: ['Token', ['createdAt','customerId','amountRp','balanceAfterRp','note','createdBy','tokenCode']],
   users: ['Users', ['username','pin','role','customerId','active']],
-  settings: ['Pengaturan', ['key','value']]
+  settings: ['Pengaturan', ['key','value']],
+  deviceStatus: ['Data_Perangkat', ['customerId','meterId','status','lastReceivedAt','lastStatusChangeAt','updatedAt']],
+  connections: ['Log_Koneksi', ['timestamp','customerId','meterId','status','lastReceivedAt','details']],
+  incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
+  powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']]
 };
 
 function doGet(e) {
@@ -61,7 +65,27 @@ function setupKWhku() {
     }
   });
   seedDemoRows_();
-  return {ok:true, message:'Sheet kWhku siap. Hapus data demo sebelum penggunaan produksi.'};
+  return {ok:true, message:'Sheet kWhku siap. Jalankan setupMonitoring() sekali untuk mengaktifkan log koneksi otomatis.'};
+}
+
+// Jalankan sekali dari Apps Script Editor setelah setupKWhku().
+function setupMonitoring() {
+  assertConfigured_();
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  ['Data_Perangkat','Log_Koneksi','Log_Gangguan'].forEach(name => {
+    const headers = SHEETS[Object.keys(SHEETS).find(k => SHEETS[k][0] === name)][1];
+    let sh = ss.getSheetByName(name);
+    if (!sh) sh = ss.insertSheet(name);
+    if (sh.getLastRow() === 0) {
+      sh.getRange(1,1,1,headers.length).setValues([headers]);
+      sh.setFrozenRows(1);
+      sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#e32636').setFontColor('#ffffff');
+    }
+  });
+  const exists = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'checkDeviceStatuses');
+  if (!exists) ScriptApp.newTrigger('checkDeviceStatuses').timeBased().everyMinutes(1).create();
+  checkDeviceStatuses();
+  return {ok:true,message:'Monitoring koneksi aktif; pemeriksaan dijalankan setiap menit.'};
 }
 
 function seedDemoRows_() {
@@ -70,9 +94,9 @@ function seedDemoRows_() {
   if (sh.getLastRow() > 1) return;
   const now = new Date();
   sh.getRange(2,1,3,10).setValues([
-    ['PLG-001','Pelanggan Demo 1','ESP32-001','PRABAYAR',CONFIG.DEFAULT_TARIFF_RP_PER_KWH,1300,100000,200000,true,now],
-    ['PLG-002','Pelanggan Demo 2','ESP32-002','PASCABAYAR',CONFIG.DEFAULT_TARIFF_RP_PER_KWH,2200,0,250000,true,now],
-    ['PLG-003','Pelanggan Demo 3','ESP32-003','PRABAYAR',CONFIG.DEFAULT_TARIFF_RP_PER_KWH,900,50000,150000,true,now]
+    ['PLG-001','Pelanggan Demo 900 VA Subsidi','ESP32-001','PASCABAYAR',605,900,0,200000,true,now],
+    ['PLG-002','Pelanggan Demo 2200 VA','ESP32-002','PASCABAYAR',1444.70,2200,0,250000,true,now],
+    ['PLG-003','Pelanggan Demo 900 VA RTM','ESP32-003','PASCABAYAR',1352,900,0,150000,true,now]
   ]);
   const users = ss.getSheetByName('Users');
   if (users.getLastRow() === 1) {
@@ -123,20 +147,14 @@ function getDashboard(session) {
   const selected = s.role === 'ADMIN' ? customers : customers.filter(c => c.customerId === s.customerId);
   const allReadings = getRows_('Data_Listrik').sort((a,b) => new Date(b.timestamp)-new Date(a.timestamp));
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(),now.getMonth(),1);
+  const monthKey = Utilities.formatDate(now, CONFIG.TIME_ZONE, 'yyyy-MM');
+  const monthStart = Utilities.parseDate(monthKey + '-01 00:00:00', CONFIG.TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
   const result = selected.map(c => {
     const rs = allReadings.filter(r => r.customerId === c.customerId);
     const latest = rs[0] || null;
-    // Gunakan pembacaan terakhir sebelum awal bulan sebagai baseline bila tersedia.
-    const chronological = rs.slice().sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
-    const baseline = chronological.filter(r => new Date(r.timestamp) < monthStart).slice(-1)[0] || null;
-    const monthRows = chronological.filter(r => new Date(r.timestamp) >= monthStart);
-    const firstMonth = monthRows.length ? monthRows[0] : null;
-    const lastMonth = monthRows.length ? monthRows[monthRows.length-1] : null;
-    const startEnergy = baseline ? Number(baseline.energyKwh||0) : (firstMonth ? Number(firstMonth.energyKwh||0) : 0);
-    const endEnergy = lastMonth ? Number(lastMonth.energyKwh||0) : startEnergy;
-    const energyMonth = Math.max(0, endEnergy - startEnergy);
-    const costMonth = energyMonth * Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
+    const energyMonth = energyBetween_(rs, monthStart.getTime(), now.getTime());
+    const tariff = Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
+    const costMonth = energyMonth * tariff;
     const online = latest && ((now-new Date(latest.receivedAt || latest.timestamp))/60000 <= CONFIG.MAX_AGE_MINUTES_ONLINE);
     const mode = String(c.mode || 'PASCABAYAR').toUpperCase();
     const balance = Number(c.tokenBalanceRp || 0);
@@ -144,11 +162,11 @@ function getDashboard(session) {
     return {
       customerId:c.customerId, name:c.name, meterId:c.meterId, mode,
       tariffRpPerKwh:Number(c.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH),
-      powerVa:Number(c.powerVa || 0), energyMonthKwh:round_(energyMonth,3),
-      costMonthRp:Math.round(costMonth), latest:latest ? normalizeReading_(latest) : null,
+      powerVa:Number(c.powerVa || 0), monthlyTargetRp:Number(c.monthlyTargetRp || 0), energyMonthKwh:round_(energyMonth,6),
+      costMonthRp:round_(costMonth,2), latest:latest ? normalizeReading_(latest) : null,
       online:!!online, tokenBalanceRp:balance,
       estimatedDaysLeft: mode === 'PRABAYAR' && dailyCost > 0 ? round_(balance/dailyCost,1) : null,
-      dailyCostRp:Math.round(dailyCost)
+      dailyCostRp:round_(dailyCost,2)
     };
   });
   const ids = selected.map(c=>c.customerId);
@@ -182,9 +200,102 @@ function adminCreateCustomer(session, payload) {
   const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   ss.getSheetByName('Pelanggan').appendRow([id,name,meterId,mode,tariff,Number(payload.powerVa)||1300,Number(payload.tokenBalanceRp)||0,Number(payload.monthlyTargetRp)||0,true,new Date()]);
   // Account is created with a temporary PIN; change it before real deployment.
-  const pin=String(100000 + (parseInt(Utilities.getUuid().replace(/-/g,'').slice(0,7),16) % 900000));
+  const pin=String(Math.floor(100000+Math.random()*900000));
   ss.getSheetByName('Users').appendRow([id,hashPin_(pin),'PELANGGAN',id,true]);
   return {ok:true,customerId:id,temporaryPin:pin,message:'Pelanggan dibuat. Bagikan PIN sementara secara aman dan minta pengguna menggantinya.'};
+}
+
+function adminUpdateCustomer(session, customerId, payload) {
+  const s = validateSession_(session);
+  if (!s.ok || s.role !== 'ADMIN') return {ok:false,message:'Akses admin diperlukan.'};
+  const id = String(customerId || '').trim().toUpperCase();
+  payload = payload || {};
+  const rows = getRows_('Pelanggan');
+  const c = rows.find(r => String(r.customerId) === id);
+  if (!c) return {ok:false,message:'Pelanggan tidak ditemukan.'};
+  const name = String(payload.name !== undefined ? payload.name : c.name).trim();
+  const meterId = String(payload.meterId !== undefined ? payload.meterId : c.meterId).trim();
+  const mode = String(payload.mode !== undefined ? payload.mode : c.mode).trim().toUpperCase();
+  const tariff = Number(payload.tariffRpPerKwh !== undefined ? payload.tariffRpPerKwh : c.tariffRpPerKwh);
+  const powerVa = Number(payload.powerVa !== undefined ? payload.powerVa : c.powerVa);
+  const monthlyTargetRp = Number(payload.monthlyTargetRp !== undefined ? payload.monthlyTargetRp : c.monthlyTargetRp);
+  const active = payload.active === undefined ? truthy_(c.active) : truthy_(payload.active);
+  if (!name || !meterId || !['PRABAYAR','PASCABAYAR'].includes(mode) || !Number.isFinite(tariff) || tariff <= 0 || !Number.isFinite(powerVa) || powerVa <= 0 || !Number.isFinite(monthlyTargetRp) || monthlyTargetRp < 0) {
+    return {ok:false,message:'Periksa nama, ID meter, mode, tarif, daya, dan target bulanan.'};
+  }
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sh = ss.getSheetByName('Pelanggan');
+  const row = rows.findIndex(r => String(r.customerId) === id) + 2;
+  // Kolom: ID, nama, meter, mode, tarif, daya, saldo, target, aktif, dibuat.
+  sh.getRange(row, 2, 1, 1).setValue(name);
+  sh.getRange(row, 3, 1, 1).setValue(meterId);
+  sh.getRange(row, 4, 1, 1).setValue(mode);
+  sh.getRange(row, 5, 1, 1).setValue(tariff);
+  sh.getRange(row, 6, 1, 1).setValue(powerVa);
+  sh.getRange(row, 8, 1, 1).setValue(monthlyTargetRp);
+  sh.getRange(row, 9, 1, 1).setValue(active);
+  return {ok:true,customerId:id,message:'Data pelanggan berhasil diperbarui.'};
+}
+
+function tariffForPower_(va) {
+  const n=Number(va);
+  if(n<=450)return 415;
+  if(n<=900)return 605;
+  if(n<=2200)return 1444.70;
+  return 1699.53;
+}
+function getPowerRequests(session) {
+  const s=validateSession_(session);if(!s.ok)return s;
+  let rows=getRows_('Pengajuan_Daya');
+  if(s.role!=='ADMIN')rows=rows.filter(r=>String(r.customerId)===s.customerId);
+  const names={};getRows_('Pelanggan').forEach(c=>names[c.customerId]=c.name);
+  return {ok:true,rows:rows.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(r=>Object.assign({},r,{name:names[r.customerId]||r.customerId,requestedPowerVa:Number(r.requestedPowerVa),currentPowerVa:Number(r.currentPowerVa)}))};
+}
+function submitPowerRequest(session, requestedPowerVa, reason) {
+  const s=validateSession_(session);if(!s.ok)return s;
+  if(s.role!=='PELANGGAN')return {ok:false,message:'Pengajuan hanya tersedia untuk akun pelanggan.'};
+  const allowed=[900,1300,2200,3500,5500,6600,7700,10600];
+  const requested=Number(requestedPowerVa),why=String(reason||'').trim();
+  if(!allowed.includes(requested)||why.length<5||why.length>500)return {ok:false,message:'Pilih daya yang tersedia dan tuliskan alasan minimal 5 karakter.'};
+  const customer=getRows_('Pelanggan').find(c=>String(c.customerId)===s.customerId);
+  if(!customer)return {ok:false,message:'Data pelanggan tidak ditemukan.'};
+  const pending=getRows_('Pengajuan_Daya').some(r=>String(r.customerId)===s.customerId&&String(r.status)==='MENUNGGU');
+  if(pending)return {ok:false,message:'Masih ada pengajuan yang menunggu keputusan Admin.'};
+  if(requested<=Number(customer.powerVa||0))return {ok:false,message:'Daya yang diajukan harus lebih tinggi dari daya saat ini.'};
+  const id='DAYA-'+Utilities.getUuid().slice(0,8).toUpperCase();
+  SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName('Pengajuan_Daya').appendRow([id,new Date(),s.customerId,Number(customer.powerVa||0),requested,why,'MENUNGGU','','', '']);
+  return {ok:true,requestId:id,message:'Pengajuan penambahan daya berhasil dikirim.'};
+}
+function reviewPowerRequest(session, requestId, decision, chosenTariff) {
+  const s=validateSession_(session);if(!s.ok||s.role!=='ADMIN')return {ok:false,message:'Akses Admin diperlukan.'};
+  const id=String(requestId||''),status=String(decision||'');
+  if(!['DISETUJUI','DITOLAK'].includes(status))return {ok:false,message:'Keputusan tidak valid.'};
+  const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID),sh=ss.getSheetByName('Pengajuan_Daya'),rows=getRows_('Pengajuan_Daya');
+  const idx=rows.findIndex(r=>String(r.requestId)===id);
+  if(idx<0)return {ok:false,message:'Pengajuan tidak ditemukan.'};
+  const req=rows[idx];if(String(req.status)!=='MENUNGGU')return {ok:false,message:'Pengajuan sudah diproses.'};
+  const tariff=status==='DISETUJUI'?Number(chosenTariff||tariffForPower_(req.requestedPowerVa)):'';
+  if(status==='DISETUJUI'&&(!Number.isFinite(tariff)||tariff<=0||tariff>100000))return {ok:false,message:'Tarif golongan tidak valid.'};
+  if(status==='DISETUJUI'){
+    const customers=getRows_('Pelanggan'),ci=customers.findIndex(c=>String(c.customerId)===String(req.customerId));
+    if(ci<0)return {ok:false,message:'Pelanggan tidak ditemukan.'};
+    const csh=ss.getSheetByName('Pelanggan'),row=ci+2;
+    csh.getRange(row,6).setValue(Number(req.requestedPowerVa));
+    csh.getRange(row,5).setValue(tariff);
+  }
+  const row=idx+2;sh.getRange(row,7).setValue(status);sh.getRange(row,8).setValue(new Date());sh.getRange(row,9).setValue(s.username);sh.getRange(row,10).setValue(tariff);
+  return {ok:true,message:status==='DISETUJUI'?'Pengajuan disetujui; daya dan tarif telah diperbarui.':'Pengajuan ditolak.'};
+}
+function resetCustomerData(session) {
+  const s=validateSession_(session);if(!s.ok)return s;
+  if(s.role!=='PELANGGAN')return {ok:false,message:'Reset mandiri hanya tersedia untuk pelanggan.'};
+  const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID),sh=ss.getSheetByName('Data_Listrik');
+  if(!sh||sh.getLastRow()<2)return {ok:true,deleted:0,message:'Tidak ada data pembacaan untuk direset.'};
+  const rows=sh.getDataRange().getValues(),header=rows[0],idx=header.indexOf('customerId');
+  if(idx<0)return {ok:false,message:'Kolom customerId tidak ditemukan.'};
+  let deleted=0;
+  for(let i=rows.length-1;i>=1;i--)if(String(rows[i][idx])===s.customerId){sh.deleteRow(i+1);deleted++;}
+  return {ok:true,deleted,message:'Riwayat pembacaan pelanggan berhasil direset.'};
 }
 
 function adminAddTokenBalance(session, customerId, amountRp, note) {
@@ -192,27 +303,72 @@ function adminAddTokenBalance(session, customerId, amountRp, note) {
   if(!s.ok || s.role!=='ADMIN') return {ok:false,message:'Akses admin diperlukan.'};
   const amount=Number(amountRp);
   if(!Number.isFinite(amount)||amount<=0||amount>10000000) return {ok:false,message:'Nominal tidak valid.'};
-  const lock=LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sh=ss.getSheetByName('Pelanggan');
-    const rows=getRows_('Pelanggan');
-    const c=rows.find(r=>r.customerId===String(customerId));
-    if(!c) return {ok:false,message:'Pelanggan tidak ditemukan.'};
-    if(String(c.mode).toUpperCase()!=='PRABAYAR') return {ok:false,message:'Saldo token hanya untuk pelanggan prabayar.'};
-    const row=rows.findIndex(r=>r.customerId===String(customerId))+2;
-    const newBalance=Number(c.tokenBalanceRp||0)+amount;
-    sh.getRange(row,7).setValue(newBalance);
-    const code=genTokenCode_();
-    ss.getSheetByName('Token').appendRow([new Date(),customerId,amount,newBalance,String(note||'Penambahan saldo internal').slice(0,200),s.username,code]);
-    return {ok:true,balanceRp:newBalance,tokenCode:code,message:'Saldo internal berhasil diperbarui. Ini bukan penerbitan token PLN resmi.'};
-  } finally {
-    lock.releaseLock();
-  }
+  const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sh=ss.getSheetByName('Pelanggan');
+  const rows=getRows_('Pelanggan');
+  const c=rows.find(r=>r.customerId===String(customerId));
+  if(!c) return {ok:false,message:'Pelanggan tidak ditemukan.'};
+  if(String(c.mode).toUpperCase()!=='PRABAYAR') return {ok:false,message:'Saldo token hanya untuk pelanggan prabayar.'};
+  const row=rows.findIndex(r=>r.customerId===String(customerId))+2;
+  const newBalance=Number(c.tokenBalanceRp||0)+amount;
+  sh.getRange(row,7).setValue(newBalance);
+  const code=genTokenCode_();
+  ss.getSheetByName('Token').appendRow([new Date(),customerId,amount,newBalance,String(note||'Penambahan saldo internal'),s.username,code]);
+  return {ok:true,balanceRp:newBalance,tokenCode:code,message:'Saldo internal berhasil diperbarui. Ini bukan penerbitan token PLN resmi.'};
 }
 
 /** ESP32 sends JSON: {apiKey, deviceId, customerId, timestamp, voltageV, currentA, powerW, energyKwh, frequencyHz, powerFactor, source} */
+/**
+ * Merapikan Data_Listrik hanya jika ada baris kosong di tengah data.
+ * Header baris 1 dipertahankan; data bertimestamp dipadatkan mulai baris 2.
+ */
+function compactReadingRowsIfNeeded_(sheet) {
+  // Timestamp di kolom A menjadi penentu apakah baris berisi data.
+  // Padatkan semua baris data yang valid ke baris 2..N, tanpa mengubah urutannya.
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  const width = Math.max(sheet.getLastColumn(), 11);
+  const values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
+  const kept = values.filter(row => {
+    const ts = row[0];
+    return ts !== '' && ts !== null && ts !== undefined &&
+      !(ts instanceof Date && isNaN(ts.getTime()));
+  });
+
+  let hasGap = kept.length !== values.length;
+  if (!hasGap) {
+    let blankSeen = false;
+    for (const row of values) {
+      const populated = row[0] !== '' && row[0] !== null && row[0] !== undefined;
+      if (!populated) blankSeen = true;
+      else if (blankSeen) { hasGap = true; break; }
+    }
+  }
+  if (!hasGap) return kept.length;
+
+  // Bersihkan konten lama pada area data, lalu tulis ulang data valid dari baris 2.
+  // Format header, frozen row, dan nama kolom tidak diubah.
+  sheet.getRange(2, 1, lastRow - 1, width).clearContent();
+  if (kept.length) {
+    sheet.getRange(2, 1, kept.length, width).setValues(kept);
+  }
+  return kept.length;
+}
+
+function lastReadingRow_(sheet) {
+  // Cari baris terakhir yang benar-benar memiliki timestamp, bukan getLastRow()
+  // yang dapat terpengaruh format/isi di kolom lain.
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 1;
+  const timestamps = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = timestamps.length - 1; i >= 0; i--) {
+    const ts = timestamps[i][0];
+    if (ts !== '' && ts !== null && ts !== undefined) return i + 2;
+  }
+  return 1;
+}
+
 function doPost(e) {
   try {
     assertConfigured_();
@@ -233,6 +389,7 @@ function doPost(e) {
     if(!Number.isFinite(energy)||energy<0||energy>1e9||
        ![voltage,current,power,frequency,pf].every(Number.isFinite)||
        voltage<0||voltage>300||current<0||current>1000||power<0||power>1e7||frequency<0||frequency>1000||pf<0||pf>1) {
+      logIncident_(customerId, deviceId, 'INVALID_MEASUREMENT', 'WARNING', 'Pembacaan ditolak karena nilai sensor di luar batas valid.', '');
       return json_({ok:false,message:'Invalid measurement'});
     }
     const parsedTimestamp=body.timestamp ? new Date(body.timestamp) : new Date();
@@ -242,12 +399,35 @@ function doPost(e) {
     const lock=LockService.getScriptLock();
     lock.waitLock(10000);
     try {
-      ss.getSheetByName('Data_Listrik').appendRow([
+      const receivedAt = new Date();
+      const readingSheet = ss.getSheetByName('Data_Listrik');
+      if (!readingSheet) throw new Error('Sheet Data_Listrik tidak ditemukan');
+      // Rapikan baris kosong lama; data bertimestamp dipadatkan mulai baris 2.
+      compactReadingRowsIfNeeded_(readingSheet);
+      const existing = getRows_('Data_Listrik').filter(r => String(r.customerId) === customerId && String(r.meterId) === deviceId)
+        .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp));
+      const previous = existing[0];
+      if (previous && energy + 0.0005 < Number(previous.energyKwh || 0)) {
+        logIncident_(customerId, deviceId, 'ENERGY_COUNTER_DROP', 'WARNING',
+          'Energi kumulatif turun dari '+Number(previous.energyKwh||0)+' menjadi '+energy+' kWh. Periksa reset meter atau urutan data.', '');
+      }
+      // Tulis pada baris berikutnya setelah timestamp terakhir yang valid.
+      // Ini menghindari data masuk ke baris 54/63 saat ada celah kosong lama.
+      const savedRow = lastReadingRow_(readingSheet) + 1;
+      readingSheet.getRange(savedRow, 1, 1, 11).setValues([[
         timestamp,customerId,deviceId,voltage,current,power,energy,
-        frequency,pf,String(body.source||'ESP32').slice(0,40),new Date()
-      ]);
+        frequency,pf,String(body.source||'ESP32').slice(0,40),receivedAt
+      ]]);
+      // Format tampilan: V/A/W/Hz/PF dua desimal, energi kWh tiga desimal.
+      // Nilai sensor asli tetap disimpan; format ini hanya mengubah tampilan di Sheets.
+      readingSheet.getRange(savedRow, 4, 1, 3).setNumberFormat('0.00'); // D:F
+      readingSheet.getRange(2, 7, savedRow - 1, 1).setNumberFormat('0.000'); // G: energyKwh, termasuk data lama
+      readingSheet.getRange(savedRow, 8, 1, 2).setNumberFormat('0.00'); // H:I
+      // Sembunyikan metadata teknis yang tidak digunakan pada tabel penelitian; data tetap tersimpan.
+      if (!readingSheet.isColumnHiddenByUser(8)) readingSheet.hideColumns(8, 4); // H:K
+      updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
-    return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString()});
+    return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
   } catch(err) {
     console.error('doPost error:', err);
     return json_({ok:false,message:'Permintaan gagal diproses. Periksa konfigurasi dan log Apps Script.'});
@@ -264,21 +444,11 @@ function hashPin_(pin) {
 
 function createSession_(user) {
   const token = Utilities.getUuid() + Utilities.getUuid();
-  const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-  const key = 'kwhku_session_' + token;
-  const sessionData = {username:user.username, role:user.role, customerId:user.customerId || '', expiresAt:expiresAt};
-  const props = PropertiesService.getScriptProperties();
-  const all = props.getProperties();
-  Object.keys(all).forEach(k => {
-    if (k.indexOf('kwhku_session_') !== 0) return;
-    try {
-      const old = JSON.parse(all[k]);
-      if (!old.expiresAt || Number(old.expiresAt) <= Date.now()) props.deleteProperty(k);
-    } catch (_) { props.deleteProperty(k); }
-  });
-  props.setProperty(key, JSON.stringify(sessionData));
-  CacheService.getScriptCache().put(key, JSON.stringify(sessionData), 21600);
-  return {ok:true, role:user.role, username:user.username, name:user.name, customerId:user.customerId || '', token:token, expiresAt:expiresAt};
+  const safeUser = {role:user.role, username:user.username, name:user.name, customerId:user.customerId || '', token:token};
+  CacheService.getScriptCache().put('kwhku_session_' + token, JSON.stringify({
+    username:user.username, role:user.role, customerId:user.customerId || ''
+  }), 21600); // 6 jam
+  return Object.assign({ok:true}, safeUser);
 }
 
 function login(username, pin) {
@@ -289,37 +459,19 @@ function login(username, pin) {
 function validateSession_(session) {
   const token = String(session && session.token || '');
   if (!token || token.length < 30) return {ok:false,message:'Sesi tidak valid. Silakan masuk kembali.'};
-  const key = 'kwhku_session_' + token;
-  const cache = CacheService.getScriptCache();
-  const props = PropertiesService.getScriptProperties();
-  let raw = cache.get(key);
-  let s = raw ? JSON.parse(raw) : null;
-  if (!s) { raw = props.getProperty(key); s = raw ? JSON.parse(raw) : null; }
-  if (!s) return {ok:false,message:'Sesi berakhir. Silakan masuk kembali.'};
-  if (!s.expiresAt || Number(s.expiresAt) <= Date.now()) {
-    cache.remove(key); props.deleteProperty(key);
-    return {ok:false,message:'Sesi berakhir. Silakan masuk kembali.'};
-  }
+  const cached = CacheService.getScriptCache().get('kwhku_session_' + token);
+  if (!cached) return {ok:false,message:'Sesi berakhir. Silakan masuk kembali.'};
+  const s = JSON.parse(cached);
   const u = getRows_('Users').find(r =>
     String(r.username) === String(s.username) &&
     String(r.role).toUpperCase() === String(s.role).toUpperCase() &&
     truthy_(r.active)
   );
-  if (!u) {
-    cache.remove(key); props.deleteProperty(key);
-    return {ok:false,message:'Akun tidak aktif atau sesi tidak valid.'};
+  if (!u) return {ok:false,message:'Akun tidak aktif atau sesi tidak valid.'};
+  if (String(u.role).toUpperCase() === 'ADMIN') {
+    return {ok:true,role:'ADMIN',username:u.username,customerId:''};
   }
-  if (String(u.role).toUpperCase() === 'ADMIN') return {ok:true,role:'ADMIN',username:u.username,customerId:''};
   return {ok:true,role:'PELANGGAN',username:u.username,customerId:String(u.customerId)};
-}
-function logoutSession(session) {
-  const token = String(session && session.token || '');
-  if (token && token.length >= 30) {
-    const key = 'kwhku_session_' + token;
-    CacheService.getScriptCache().remove(key);
-    PropertiesService.getScriptProperties().deleteProperty(key);
-  }
-  return {ok:true};
 }
 function getRows_(key) {
   const entry=SHEETS[key]||Object.values(SHEETS).find(x=>x[0]===key);
@@ -330,19 +482,123 @@ function getRows_(key) {
   const values=sh.getRange(2,1,sh.getLastRow()-1,headers.length).getValues();
   return values.map(row=>Object.fromEntries(headers.map((h,i)=>[h,row[i]])));
 }
+function getMonitoring(session, limit) {
+  const s = validateSession_(session);
+  if (!s.ok) return s;
+  const allCustomers = getRows_('Pelanggan').filter(c => truthy_(c.active) && String(c.mode).toUpperCase() === 'PASCABAYAR');
+  const selected = s.role === 'ADMIN' ? allCustomers : allCustomers.filter(c => String(c.customerId) === s.customerId);
+  const ids = selected.map(c => String(c.customerId));
+  const readings = getRows_('Data_Listrik').filter(r => ids.includes(String(r.customerId)))
+    .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp))
+    .slice(0, Math.min(Math.max(Number(limit)||100,1),500)).map(r => {
+      const n = normalizeReading_(r);
+      n.receivedAt = new Date(r.receivedAt || r.timestamp).toISOString();
+      n.voltageV = Number(r.voltageV || 0); n.currentA = Number(r.currentA || 0);
+      n.powerW = Number(r.powerW || 0); n.energyKwh = Number(r.energyKwh || 0);
+      return n;
+    });
+  const connections = getRows_('Log_Koneksi').filter(r => ids.includes(String(r.customerId)))
+    .sort((a,b) => new Date(b.timestamp)-new Date(a.timestamp)).slice(0,100).map(r => ({
+      timestamp:new Date(r.timestamp).toISOString(),customerId:r.customerId,meterId:r.meterId,
+      status:String(r.status||''),lastReceivedAt:r.lastReceivedAt ? new Date(r.lastReceivedAt).toISOString() : '',
+      details:String(r.details||'')
+    }));
+  const incidents = getRows_('Log_Gangguan').filter(r => ids.includes(String(r.customerId)))
+    .sort((a,b) => new Date(b.timestamp)-new Date(a.timestamp)).slice(0,100).map(r => ({
+      timestamp:new Date(r.timestamp).toISOString(),customerId:r.customerId,meterId:r.meterId,
+      eventType:String(r.eventType||''),severity:String(r.severity||'INFO'),message:String(r.message||''),
+      resolvedAt:r.resolvedAt ? new Date(r.resolvedAt).toISOString() : ''
+    }));
+  const devices = getRows_('Data_Perangkat').filter(r => ids.includes(String(r.customerId))).map(r => ({
+    customerId:r.customerId,meterId:r.meterId,status:String(r.status||'UNKNOWN'),
+    lastReceivedAt:r.lastReceivedAt ? new Date(r.lastReceivedAt).toISOString() : '',
+    lastStatusChangeAt:r.lastStatusChangeAt ? new Date(r.lastStatusChangeAt).toISOString() : ''
+  }));
+  return {ok:true,readings,connections,incidents,devices,checkedAt:new Date().toISOString()};
+}
+
+// Pemeriksaan terjadwal berjalan di server walaupun website tidak dibuka.
+function checkDeviceStatuses() {
+  assertConfigured_();
+  const customers = getRows_('Pelanggan').filter(c => truthy_(c.active) && String(c.mode).toUpperCase() === 'PASCABAYAR');
+  const readings = getRows_('Data_Listrik');
+  const now = new Date();
+  customers.forEach(c => {
+    const rs = readings.filter(r => String(r.customerId) === String(c.customerId))
+      .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp));
+    const last = rs[0];
+    const lastSeen = last ? new Date(last.receivedAt || last.timestamp) : null;
+    const status = lastSeen && (now - lastSeen) <= CONFIG.MAX_AGE_MINUTES_ONLINE*60000 ? 'ONLINE' : 'OFFLINE';
+    updateDeviceStatus_(c.customerId, c.meterId, status, lastSeen, status === 'ONLINE' ? 'Data diterima dalam batas waktu.' : 'Tidak ada data baru melewati batas waktu.');
+  });
+}
+
+function updateDeviceStatus_(customerId, meterId, status, lastReceivedAt, details) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const statusSheet = ss.getSheetByName('Data_Perangkat');
+  const connectionsSheet = ss.getSheetByName('Log_Koneksi');
+  const incidentsSheet = ss.getSheetByName('Log_Gangguan');
+  if (!statusSheet || !connectionsSheet || !incidentsSheet) return;
+  const rows = getRows_('Data_Perangkat');
+  const index = rows.findIndex(r => String(r.customerId) === String(customerId) && String(r.meterId) === String(meterId));
+  const previous = index >= 0 ? String(rows[index].status || '') : '';
+  const now = new Date();
+  const seen = lastReceivedAt instanceof Date && !isNaN(lastReceivedAt.getTime()) ? lastReceivedAt : '';
+  if (index < 0) {
+    statusSheet.appendRow([customerId,meterId,status,seen,now,now]);
+  } else {
+    statusSheet.getRange(index+2,3,1,4).setValues([[status,seen,(previous !== status ? now : rows[index].lastStatusChangeAt || now),now]]);
+  }
+  if (previous !== status) {
+    connectionsSheet.appendRow([now,customerId,meterId,status,seen,details]);
+    if (status === 'OFFLINE') {
+      logIncident_(customerId,meterId,'CONNECTION_LOST','WARNING','Tidak ada data ESP32 melewati '+CONFIG.MAX_AGE_MINUTES_ONLINE+' menit.', '');
+    } else if (status === 'ONLINE' && previous === 'OFFLINE') {
+      resolveLatestIncident_(customerId,meterId,'CONNECTION_LOST',now);
+      logIncident_(customerId,meterId,'CONNECTION_RESTORED','INFO','Data ESP32 kembali diterima.','');
+    }
+  }
+}
+
+function logIncident_(customerId,meterId,eventType,severity,message,resolvedAt) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sh = ss.getSheetByName('Log_Gangguan');
+  if (!sh) return;
+  sh.appendRow([new Date(),customerId,meterId,eventType,severity,message,resolvedAt || '']);
+}
+function resolveLatestIncident_(customerId,meterId,eventType,when) {
+  const sh = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName('Log_Gangguan');
+  if (!sh || sh.getLastRow()<2) return;
+  const values = sh.getRange(2,1,sh.getLastRow()-1,7).getValues();
+  for (let i=values.length-1;i>=0;i--) {
+    if (String(values[i][1])===String(customerId) && String(values[i][2])===String(meterId) &&
+        String(values[i][3])===eventType && !values[i][6]) {
+      sh.getRange(i+2,7).setValue(when); return;
+    }
+  }
+}
+
 function normalizeReading_(r) {
+  // Jangan membulatkan nilai mentah di backend: perhitungan energi memakai presisi asli sensor.
   return {timestamp:new Date(r.timestamp).toISOString(),customerId:r.customerId,meterId:r.meterId,
     voltageV:Number(r.voltageV||0),currentA:Number(r.currentA||0),powerW:Number(r.powerW||0),
     energyKwh:Number(r.energyKwh||0),frequencyHz:Number(r.frequencyHz||0),powerFactor:Number(r.powerFactor||0),
     source:r.source||'ESP32'};
 }
 function estimateDailyCost_(readings,tariff) {
-  if(readings.length<2) return 0;
-  const newest=readings[0], oldest=readings[Math.min(readings.length-1,20)];
-  const hours=(new Date(newest.timestamp)-new Date(oldest.timestamp))/3600000;
-  const delta=Number(newest.energyKwh)-Number(oldest.energyKwh);
-  if(hours<=0||delta<0) return 0;
-  return delta/hours*24*tariff;
+  if(!Array.isArray(readings)||readings.length<2||!(Number(tariff)>0))return 0;
+  const ordered=readings.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)),newest=ordered[ordered.length-1],oldest=ordered[Math.max(0,ordered.length-21)];
+  const t0=new Date(oldest.timestamp).getTime(),t1=new Date(newest.timestamp).getTime(),delta=Number(newest.energyKwh)-Number(oldest.energyKwh),hours=(t1-t0)/3600000;
+  if(!Number.isFinite(t0)||!Number.isFinite(t1)||hours<=0||!Number.isFinite(delta)||delta<0)return 0;
+  return delta/hours*24*Number(tariff);
+}
+function energyBetween_(readingsDesc,startMs,endMs){
+  if(!Array.isArray(readingsDesc)||readingsDesc.length<2||!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs)return 0;
+  const ordered=readingsDesc.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));let total=0;
+  for(let i=1;i<ordered.length;i++){const a=ordered[i-1],b=ordered[i],t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime(),e0=Number(a.energyKwh),e1=Number(b.energyKwh);
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(e0)||!Number.isFinite(e1)||e1<e0)continue;
+    const overlap=Math.max(0,Math.min(t1,endMs)-Math.max(t0,startMs));if(overlap>0)total+=(e1-e0)*overlap/(t1-t0)}
+  return total;
 }
 function truthy_(v){return v===true||String(v).toLowerCase()==='true'||String(v)==='1'||String(v).toLowerCase()==='yes';}
 function round_(n,d){const m=Math.pow(10,d||0);return Math.round(n*m)/m;}
@@ -355,11 +611,16 @@ function handleApi_(body){
   try{
     switch(body.fn){
       case 'login': return apiLogin_(a[0],a[1]);
-      case 'logout': return logoutSession(a[0]);
       case 'getDashboard': return getDashboard(a[0]);
+      case 'getMonitoring': return getMonitoring(a[0],a[1]);
       case 'getHistory': return getHistory(a[0],a[1],a[2]);
       case 'getTokens': return getTokens(a[0]);
       case 'adminCreateCustomer': return adminCreateCustomer(a[0],a[1]||{});
+      case 'adminUpdateCustomer': return adminUpdateCustomer(a[0],a[1],a[2]||{});
+      case 'getPowerRequests': return getPowerRequests(a[0]);
+      case 'submitPowerRequest': return submitPowerRequest(a[0],a[1],a[2]);
+      case 'reviewPowerRequest': return reviewPowerRequest(a[0],a[1],a[2],a[3]);
+      case 'resetCustomerData': return resetCustomerData(a[0]);
       case 'adminAddTokenBalance': return adminAddTokenBalance(a[0],a[1],a[2],a[3]);
       default: return {ok:false,message:'Operasi tidak dikenal.'};
     }
@@ -376,22 +637,26 @@ function getTokens(session){
 function genTokenCode_(){let d='';for(let i=0;i<20;i++)d+=Math.floor(Math.random()*10);return d.replace(/(\d{4})(?=\d)/g,'$1-');}
 /** Pemakaian harian (kWh & Rp) dari selisih energi kumulatif. readingsDesc = terbaru dulu. */
 function dailyUsage_(readingsDesc,tariff,customerId){
-  // Bagi selisih energi secara proporsional ke setiap tanggal pada interval pembacaan.
-  const asc=readingsDesc.slice().reverse(),m={};
+  // Distribusikan selisih counter ke tanggal yang benar berdasarkan lama interval,
+  // agar interval yang melewati tengah malam tidak seluruhnya masuk ke satu hari.
+  const asc=readingsDesc.slice().filter(r => r && Number.isFinite(new Date(r.timestamp).getTime()))
+    .sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const m={};
   for(let i=1;i<asc.length;i++){
-    const t0=new Date(asc[i-1].timestamp).getTime(), t1=new Date(asc[i].timestamp).getTime();
-    const e0=Number(asc[i-1].energyKwh), e1=Number(asc[i].energyKwh);
-    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(e0)||!Number.isFinite(e1)||e1<e0) continue;
-    const delta=e1-e0, duration=t1-t0;
+    const r0=asc[i-1],r1=asc[i];
+    const t0=new Date(r0.timestamp).getTime(),t1=new Date(r1.timestamp).getTime();
+    const e0=Number(r0.energyKwh),e1=Number(r1.energyKwh),delta=e1-e0;
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(delta)||delta<0) continue;
     let cursor=t0;
     while(cursor<t1){
-      const key=Utilities.formatDate(new Date(cursor),CONFIG.TIME_ZONE,'yyyy-MM-dd');
-      // Zona Asia/Jakarta adalah UTC+07:00 dan tidak menggunakan DST.
-      const nextMidnight=new Date(key+'T00:00:00+07:00').getTime()+86400000;
-      const segmentEnd=Math.min(t1,nextMidnight);
-      m[key]=(m[key]||0)+delta*((segmentEnd-cursor)/duration);
-      cursor=segmentEnd;
+      const day=Utilities.formatDate(new Date(cursor),CONFIG.TIME_ZONE,'yyyy-MM-dd');
+      const nextDay=Utilities.parseDate(day+' 00:00:00',CONFIG.TIME_ZONE,'yyyy-MM-dd HH:mm:ss').getTime()+24*60*60*1000;
+      const end=Math.min(t1,nextDay);
+      if(end<=cursor) break;
+      const share=delta*((end-cursor)/(t1-t0));
+      m[day]=(m[day]||0)+share;
+      cursor=end;
     }
   }
-  return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:round_(m[k],3),costRp:Math.round(m[k]*tariff)}));
+  return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:m[k],costRp:m[k]*tariff}));
 }
