@@ -10,7 +10,7 @@
 <link rel="preload" href="assets/kwhku-logo.svg" as="image" type="image/svg+xml">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
 <link rel="preload" href="style.css?v=responsive-v1-20261029" as="style">
-<link rel="stylesheet" href="style.css?v=speed-index-20261029">
+<link rel="stylesheet" href="style.css?v=raw-precision-responsive-v3">
 </head>
 <body>
 <div id="loginView" class="login-wrap">
@@ -97,7 +97,7 @@
       </div>
       <div class="panel table-panel">
         <div class="panel-head"><div><h3>Riwayat pembacaan sensor</h3><p>Energi kumulatif, daya, tegangan, arus, timestamp, dan waktu diterima server.</p></div><button class="secondary" id="exportMonitoring">⇩ Ekspor CSV</button></div>
-        <div class="filter-row monitoring-filter" style="padding:0 20px"><label class="date-filter">Dari <input id="monitorStart" type="date" aria-label="Tanggal mulai data sensor" /></label><label class="date-filter">Sampai <input id="monitorEnd" type="date" aria-label="Tanggal akhir data sensor" /></label></div><div id="dataQuality" class="data-quality" role="status"></div><div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus (A)</th><th>Frekuensi (Hz)</th><th>Power Factor</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
+        <div class="filter-row monitoring-filter" style="padding:0 20px"><label class="limit-filter">Tampilkan <select id="monitorLimit" aria-label="Jumlah pembacaan sensor"><option value="5">5 baris</option><option value="20" selected>20 baris</option><option value="50">50 baris</option><option value="100">100 baris</option></select></label><label class="date-filter">Dari <input id="monitorStart" type="date" aria-label="Tanggal mulai data sensor" /></label><label class="date-filter">Sampai <input id="monitorEnd" type="date" aria-label="Tanggal akhir data sensor" /></label></div><div id="dataQuality" class="data-quality" role="status"></div><div class="table-wrap"><table><thead><tr><th>Timestamp pembacaan</th><th>Waktu diterima</th><th>Perangkat</th><th>Energi kumulatif</th><th>Daya</th><th>Tegangan</th><th>Arus (A)</th><th>Frekuensi (Hz)</th><th>Power Factor</th></tr></thead><tbody id="monitorReadings"><tr><td colspan="7" class="empty">Memuat data...</td></tr></tbody></table></div>
       </div>
       <div class="panel table-panel monitoring-panel">
         <div class="panel-head"><div><h3>Riwayat koneksi</h3><p>Perubahan status yang tercatat oleh server.</p></div></div>
@@ -125,8 +125,8 @@
   </main>
 </div>
 <div id="printArea"></div><div id="modalRoot"></div><div id="toast" class="toast hidden"></div>
-<script src="config.js?v=reset-under-info-v2-20261029"></script>
-<script src="demo.js?v=reset-under-info-v2-20261029"></script>
-<script src="app.js?v=sync-max-10s-20261029"></script>
+<script src="config.js?v=raw-precision-responsive-v3"></script>
+<script src="demo.js?v=raw-precision-responsive-v3"></script>
+<script src="app.js?v=raw-precision-responsive-v3"></script>
 </body>
 </html>
