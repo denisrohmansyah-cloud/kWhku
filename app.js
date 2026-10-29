@@ -27,7 +27,7 @@ const truncateDisplay=(n,places)=>{
   return (v<0?'-':'')+grouped+(places?','+fraction:'');
 };
 const fmt=n=>raw(n);
-const fmtEnergy=n=>raw(n);
+// Calculated kWh values can expose binary floating-point artifacts (e.g. 0.62400016999999995).\n// Display at most 6 decimal places by truncation only; source values and calculations stay untouched.\nconst fmtEnergy=n=>truncateDisplay(n,6);
 const fmtW=n=>truncateDisplay(n,1);
 const fmtV=n=>truncateDisplay(n,1);
 const fmtHz=n=>truncateDisplay(n,1);
@@ -276,7 +276,7 @@ function renderMonitoring(){
   const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
   const intervals=stamps.slice(1).map((t,i)=>t-stamps[i]).filter(t=>t>0),gaps=intervals.filter(t=>t>90000).length;
   const avgInterval=intervals.length?intervals.reduce((sum,t)=>sum+t,0)/intervals.length/1000:0;
-  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?raw(avgInterval)+' detik':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'')+(monitoringError?' <span class="monitoring-error">Peringatan API: '+esc(monitoringError)+'</span>':'');
+  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?truncateDisplay(avgInterval,3)+' detik':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'')+(monitoringError?' <span class="monitoring-error">Peringatan API: '+esc(monitoringError)+'</span>':'');
   const connections=(monitoring.connections||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,5);
   const incidents=(monitoring.incidents||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,5);
   const devices=(monitoring.devices||[]).filter(r=>admin()||r.customerId===session?.customerId);
