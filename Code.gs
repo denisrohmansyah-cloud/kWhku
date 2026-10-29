@@ -146,7 +146,7 @@ function ensureResetPeriodsSheet_() {
   let sh = ss.getSheetByName(SHEETS.resetPeriods[0]);
   if (!sh) {
     sh = ss.insertSheet(SHEETS.resetPeriods[0]);
-    sh.getRange(1,1,1,SHEETS.resetPeriods[1].length).setValues([SHEETS.resetPeriods[1]);
+    sh.getRange(1,1,1,SHEETS.resetPeriods[1].length).setValues([SHEETS.resetPeriods[1]]);
     sh.setFrozenRows(1);
     sh.getRange(1,1,1,SHEETS.resetPeriods[1].length)
       .setFontWeight('bold').setBackground('#e32636').setFontColor('#ffffff');
