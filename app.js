@@ -343,4 +343,14 @@ async function loadPowerRequests(){
 }
 $('powerRequestForm').onsubmit=async e=>{e.preventDefault();const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Mengirim…';try{const res=await api('submitPowerRequest',session,Number($('requestedPowerVa').value),$('powerRequestReason').value.trim());if(!res?.ok)throw Error(res?.message||'Pengajuan gagal');$('powerRequestReason').value='';toast('Pengajuan berhasil dikirim');await loadPowerRequests()}catch(err){toast(err.message||String(err))}finally{btn.disabled=false;btn.textContent='Kirim pengajuan'}};
 $('powerRequestTable').onclick=async e=>{const a=e.target.closest('[data-approve]'),r=e.target.closest('[data-reject]');if(!a&&!r)return;const id=(a||r).dataset[a?'approve':'reject'];const action=a?'DISETUJUI':'DITOLAK';let tariff=null;if(a){const req=powerRequests.find(x=>String(x.requestId)===String(id));const va=Number(req?.requestedPowerVa);let opts=va<=450?'415 = 450 VA subsidi':va<=900?'605 = 900 VA subsidi; 1352 = 900 VA RTM':va<=2200?'1444.70 = 1.300/2.200 VA': '1699.53 = 3.500 VA ke atas';const selected=prompt('Masukkan tarif Rp/kWh sesuai golongan pelanggan. Pilihan yang relevan: '+opts,va<=450?'415':va<=900?'605':va<=2200?'1444.70':'1699.53');if(selected===null)return;tariff=Number(selected);if(!Number.isFinite(tariff)||tariff<=0){toast('Tarif tidak valid');return}}if(!confirm((a?'Setujui dan terapkan daya serta tarif Rp '+tariff+'/kWh?':'Tolak pengajuan ini?')))return;try{const res=await api('reviewPowerRequest',session,id,action,tariff);if(!res?.ok)throw Error(res?.message||'Gagal memproses');toast(res.message||'Pengajuan diproses');await refresh();await loadPowerRequests()}catch(err){toast(err.message||String(err))}};
+$('resetCalculationPeriod').onclick=async()=>{
+  if(admin())return;
+  if(!confirm('Mulai periode perhitungan energi dan biaya dari titik awal baru? Riwayat mentah dan counter PZEM tidak akan dihapus atau diubah.'))return;
+  try{
+    const res=await api('resetCalculationPeriod',session);
+    if(!res?.ok)throw Error(res?.message||'Reset periode gagal');
+    toast('Periode perhitungan berhasil dimulai ulang');
+    await refresh();
+  }catch(err){toast(err.message||String(err))}
+};
 $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan menghapus riwayat pembacaan dan rekap pemakaian akun Anda dari sistem. Tindakan ini tidak dapat dibatalkan. Lanjutkan?'))return;if(!confirm('Konfirmasi terakhir: hapus semua data pembacaan listrik milik akun Anda?'))return;try{const res=await api('resetCustomerData',session);if(!res?.ok)throw Error(res?.message||'Reset gagal');toast('Data pembacaan berhasil direset');await refresh()}catch(err){toast(err.message||String(err))}};
