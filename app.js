@@ -1,19 +1,39 @@
 const $=id=>document.getElementById(id);
 const num=n=>{if(n===null||n===undefined||(typeof n==='string'&&!n.trim()))return null;const v=typeof n==='number'?n:Number(n);return Number.isFinite(v)?v:null};
-// Use the shortest exact decimal representation of the JavaScript number: no fixed
-// decimal places and no presentation-time rounding. Grouping affects display only.
+// Display-only formatters: truncate to the requested precision, never round.
+// Raw values remain unchanged for calculations and CSV exports.
 const raw=n=>{
   const v=num(n);if(v===null)return '—';
   const text=String(v);
   if(/[eE]/.test(text))return text.replace('.',',');
   const negative=text.startsWith('-'),body=negative?text.slice(1):text;
-  const [whole,fraction]=body.split('.');
+  const [whole,fraction='']=body.split('.');
   const grouped=whole.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-  return (negative?'-':'')+grouped+(fraction===undefined?'':','+fraction);
+  return (negative?'-':'')+grouped+(fraction?','+fraction:'');
+};
+const truncateDisplay=(n,places)=>{
+  const v=num(n);if(v===null)return '—';
+  const text=String(Math.abs(v));
+  let whole,fraction='';
+  if(/[eE]/.test(text)){
+    const cut=Math.trunc(Math.abs(v)*10**places)/10**places;
+    const parts=cut.toFixed(places).split('.');
+    whole=parts[0];fraction=parts[1]||'';
+  }else{
+    [whole,fraction='']=text.split('.');
+    fraction=fraction.slice(0,places).padEnd(places,'0');
+  }
+  const grouped=whole.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  return (v<0?'-':'')+grouped+(places?','+fraction:'');
 };
 const fmt=n=>raw(n);
-const rp=n=>'Rp '+raw(num(n)??0);
-const fmtEnergy=raw,fmtW=raw,fmtV=raw,fmtHz=raw,fmtPF=raw,fmtCurrentA=raw;
+const fmtEnergy=n=>truncateDisplay(n,2);
+const fmtW=n=>truncateDisplay(n,1);
+const fmtV=n=>truncateDisplay(n,1);
+const fmtHz=n=>truncateDisplay(n,1);
+const fmtPF=n=>truncateDisplay(n,2);
+const fmtCurrentA=n=>truncateDisplay(n,3);
+const rp=n=>'Rp '+truncateDisplay(num(n)??0,2);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -135,7 +155,7 @@ function renderAll(){if(!session)return;
   $('tokenDate').innerHTML=admin()?'—<small>Tagihan bulanan</small>':'Akhir bulan<small>Periode tagihan</small>';
   $('tokenBalance').textContent=c?rp(cost):rp(sum('costMonthRp'));
   const pct=target>0?Math.min(100,cost/target*100):0;
-  $('tokenPercent').textContent=target?fmt(pct)+'% dari target':'Target belum diatur';
+  $('tokenPercent').textContent=target?truncateDisplay(pct,2)+'% dari target':'Target belum diatur';
   $('tokenProgress').style.width=pct+'%';
   $('tokenUsed').textContent=target?'Target biaya: '+rp(target):'Target biaya belum diatur';
   const on=customers.filter(x=>x.online).length,heavy=L&&c.powerVa&&L.powerW>c.powerVa*.8;
@@ -249,7 +269,7 @@ function renderMonitoring(){
   $('monFrequency').textContent=latest?fmtHz(latest.frequencyHz)+' Hz':'— Hz';
   $('monPowerFactor').textContent=latest?fmtPF(latest.powerFactor):'—';
   $('monEnergy').textContent=latest?fmtEnergy(latest.energyKwh)+' kWh':'— kWh';
-  $('monPower').textContent='Daya '+(latest?fmt(latest.powerW)+' W':'— W');
+  $('monPower').textContent='Daya '+(latest?fmtW(latest.powerW)+' W':'— W');
   $('monitorReadings').innerHTML=readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmt(r.powerW)+' W</td><td>'+fmt(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmt(r.frequencyHz)+' Hz</td><td>'+fmtPF(r.powerFactor)+'</td></tr>').join('')||'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>';
   $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
