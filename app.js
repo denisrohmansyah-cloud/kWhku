@@ -53,7 +53,7 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=
     document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.toggle('hidden',!admin()));document.querySelectorAll('.customer-only').forEach(el=>el.classList.toggle('hidden',admin()));
     $('welcomeTitle').textContent='Halo, '+(admin()?'Admin':res.name.split(' ')[0])+'! 👋';
     $('welcomeSub').textContent=admin()?'Pantau data listrik seluruh pelanggan.':'Berikut ringkasan penggunaan listrik Anda.';
-    await refresh(true);showPage('dashboard');
+    try{await refresh(false);showPage('dashboard')}finally{$('syncOverlay').classList.add('hidden')}
   }catch(err){toast('Gagal terhubung: '+(err.message||err))}finally{btn.disabled=false;btn.innerHTML='Masuk ke Dashboard <span aria-hidden="true">→</span>'}});
 $('logout').onclick=()=>{session=null;try{sessionStorage.removeItem('kwhku_session')}catch(_){}customers=[];daily=[];tokens=[];$('password').value='';$('appView').classList.add('hidden');$('loginView').classList.remove('hidden')};
 // Restore the authenticated session after a page refresh in the same browser tab.
