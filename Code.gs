@@ -266,7 +266,7 @@ function submitPowerRequest(session, requestedPowerVa, reason) {
   SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName('Pengajuan_Daya').appendRow([id,new Date(),s.customerId,Number(customer.powerVa||0),requested,why,'MENUNGGU','','', '']);
   return {ok:true,requestId:id,message:'Pengajuan penambahan daya berhasil dikirim.'};
 }
-function reviewPowerRequest(session, requestId, decision) {
+function reviewPowerRequest(session, requestId, decision, chosenTariff) {
   const s=validateSession_(session);if(!s.ok||s.role!=='ADMIN')return {ok:false,message:'Akses Admin diperlukan.'};
   const id=String(requestId||''),status=String(decision||'');
   if(!['DISETUJUI','DITOLAK'].includes(status))return {ok:false,message:'Keputusan tidak valid.'};
@@ -274,7 +274,8 @@ function reviewPowerRequest(session, requestId, decision) {
   const idx=rows.findIndex(r=>String(r.requestId)===id);
   if(idx<0)return {ok:false,message:'Pengajuan tidak ditemukan.'};
   const req=rows[idx];if(String(req.status)!=='MENUNGGU')return {ok:false,message:'Pengajuan sudah diproses.'};
-  const tariff=status==='DISETUJUI'?tariffForPower_(req.requestedPowerVa):'';
+  const tariff=status==='DISETUJUI'?Number(chosenTariff||tariffForPower_(req.requestedPowerVa)):'';
+  if(status==='DISETUJUI'&&(!Number.isFinite(tariff)||tariff<=0||tariff>100000))return {ok:false,message:'Tarif golongan tidak valid.'};
   if(status==='DISETUJUI'){
     const customers=getRows_('Pelanggan'),ci=customers.findIndex(c=>String(c.customerId)===String(req.customerId));
     if(ci<0)return {ok:false,message:'Pelanggan tidak ditemukan.'};
@@ -618,7 +619,7 @@ function handleApi_(body){
       case 'adminUpdateCustomer': return adminUpdateCustomer(a[0],a[1],a[2]||{});
       case 'getPowerRequests': return getPowerRequests(a[0]);
       case 'submitPowerRequest': return submitPowerRequest(a[0],a[1],a[2]);
-      case 'reviewPowerRequest': return reviewPowerRequest(a[0],a[1],a[2]);
+      case 'reviewPowerRequest': return reviewPowerRequest(a[0],a[1],a[2],a[3]);
       case 'resetCustomerData': return resetCustomerData(a[0]);
       case 'adminAddTokenBalance': return adminAddTokenBalance(a[0],a[1],a[2],a[3]);
       default: return {ok:false,message:'Operasi tidak dikenal.'};
