@@ -45,7 +45,7 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=
     document.querySelectorAll('.admin-only,.admin-col').forEach(el=>el.classList.toggle('hidden',!admin()));document.querySelectorAll('.customer-only').forEach(el=>el.classList.toggle('hidden',admin()));
     $('welcomeTitle').textContent='Halo, '+(admin()?'Admin':res.name.split(' ')[0])+'! 👋';
     $('welcomeSub').textContent=admin()?'Pantau data listrik seluruh pelanggan.':'Berikut ringkasan penggunaan listrik Anda.';
-    await refresh();showPage('dashboard');
+    await refresh(true);showPage('dashboard');
   }catch(err){toast('Gagal terhubung: '+(err.message||err))}finally{btn.disabled=false;btn.innerHTML='Masuk ke Dashboard <span aria-hidden="true">→</span>'}});
 $('logout').onclick=()=>{session=null;customers=[];daily=[];tokens=[];$('password').value='';$('appView').classList.add('hidden');$('loginView').classList.remove('hidden')};
 $('mobileMenu').onclick=()=>$('sidebar').classList.toggle('open');
@@ -62,8 +62,9 @@ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dat
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
 let refreshInFlight=false;
-async function refresh(){
-  if(!session||refreshInFlight)return;refreshInFlight=true; // Background refresh must not block the whole interface.
+async function refresh(showLoading=false){
+  if(!session||refreshInFlight)return;refreshInFlight=true;
+  if(showLoading)$('appView').classList.add('is-loading');
   try{
     const res=await api('getDashboard',session);
     if(!res?.ok){if(/Sesi/i.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
@@ -78,7 +79,7 @@ async function refresh(){
     }catch(err){monitoringError='Gagal memuat monitoring: '+(err?.message||String(err));console.warn(monitoringError,err)}
     $('liveText').textContent='TERHUBUNG DENGAN SERVER';renderAll();
   }catch(err){const badge=$('liveText');if(badge)badge.textContent='SERVER TIDAK MERESPONS';console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
-  finally{refreshInFlight=false;$('appView').classList.remove('is-loading')}
+  finally{refreshInFlight=false;if(showLoading)$('appView').classList.remove('is-loading')}
 }
 
 // ---- Render
