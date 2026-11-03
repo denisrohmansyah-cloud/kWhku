@@ -491,6 +491,28 @@ function setReadingDisplayRow_(sheet,row) {
   });
 }
 
+
+/** Pastikan sheet suhu tersedia dengan header yang sesuai tanpa mengubah data yang sudah ada. */
+function ensureTemperatureSheet_(spreadsheet) {
+  const name = SHEETS.temperature[0];
+  const headers = SHEETS.temperature[1];
+  let sheet = spreadsheet.getSheetByName(name);
+  if (!sheet) sheet = spreadsheet.insertSheet(name);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1,1,1,headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1,1,1,headers.length)
+      .setFontWeight('bold').setBackground('#e32636').setFontColor('#ffffff');
+    return sheet;
+  }
+  const existingHeaders = sheet.getRange(1,1,1,headers.length).getValues()[0];
+  const compatible = headers.every((header,index) => String(existingHeaders[index] || '').trim() === header);
+  if (!compatible) {
+    throw new Error('Header Data_Suhu tidak sesuai. Data tidak ditulis agar struktur sheet lama tidak tertimpa.');
+  }
+  return sheet;
+}
+
 function doPost(e) {
   try {
     assertConfigured_();
@@ -555,14 +577,10 @@ function doPost(e) {
       readingSheet.showColumns(12, 6);
       // Pastikan kolom H:K terlihat.
       readingSheet.showColumns(8, 4);
-      // Simpan suhu dan kelembapan hanya jika ESP32 mengirim pembacaan valid.
+      // Simpan suhu dan kelembapan pada Data_Suhu; Data_Listrik A:K dan raw L:Q tidak disentuh.
       if (temperatureC !== null && temperatureC >= 0 && temperatureC <= 50 &&
           humidityPct !== null && humidityPct >= 0 && humidityPct <= 100) {
-        const temperatureSheet = ss.getSheetByName('Data_Suhu') || ss.insertSheet('Data_Suhu');
-        if (temperatureSheet.getLastRow() === 0) {
-          temperatureSheet.getRange(1,1,1,SHEETS.temperature[1].length).setValues([SHEETS.temperature[1]]);
-          temperatureSheet.setFrozenRows(1);
-        }
+        const temperatureSheet = ensureTemperatureSheet_(ss);
         temperatureSheet.appendRow([timestamp,customerId,deviceId,temperatureC,humidityPct,receivedAt]);
       }
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
