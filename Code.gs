@@ -823,7 +823,7 @@ function telegramProperties_() {
   };
 }
 
-function telegramSend_(message) {
+function telegramSend_(message, parseMode) {
   const cfg = telegramProperties_();
   if (!cfg.token || !cfg.chatIds.length) {
     console.warn('Telegram belum dikonfigurasi: isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS.');
@@ -834,7 +834,7 @@ function telegramSend_(message) {
     const response = UrlFetchApp.fetch(url, {
       method:'post',
       contentType:'application/json',
-      payload:JSON.stringify({chat_id:chatId,text:message,disable_web_page_preview:true}),
+      payload:JSON.stringify(Object.assign({chat_id:chatId,text:message,disable_web_page_preview:true}, parseMode ? {parse_mode:parseMode} : {})),
       muteHttpExceptions:true
     });
     const status = response.getResponseCode();
@@ -1048,13 +1048,15 @@ function dailyUsage_(readingsDesc,tariff,customerId){
 }
 
 
+function alarmHtml_(value) {
+  return String(value===null||value===undefined?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function evaluateMultiParameterTelegramAlert_(r){
   if(!r || !r.customerId) return {ok:false,message:'Data alarm tidak lengkap.'};
-  const cfg=alarmConfigFor_(r.customerId);
-  const props=PropertiesService.getScriptProperties();
+  const cfg=alarmConfigFor_(r.customerId),props=PropertiesService.getScriptProperties();
   const customerKey=String(r.customerId).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,80);
-  const stateKey='KWHKU_ALARM_STATE_'+customerKey;
-  const lock=LockService.getScriptLock();
+  const stateKey='KWHKU_ALARM_STATE_'+customerKey,lock=LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     let state={active:{},lastReminderAt:0};
@@ -1062,89 +1064,76 @@ function evaluateMultiParameterTelegramAlert_(r){
     if(!state || typeof state!=='object') state={};
     if(!state.active || typeof state.active!=='object') state.active={};
     state.lastReminderAt=Number(state.lastReminderAt)||0;
-
     const customer=getRows_('Pelanggan').find(x=>String(x.customerId)===String(r.customerId));
     const name=customer?String(customer.name||customer.customerId):String(r.customerId);
     const time=Utilities.formatDate(r.receivedAt||new Date(),CONFIG.TIME_ZONE,'dd/MM/yyyy HH:mm:ss');
     const checks=[
-      ['voltage_low','Tegangan rendah',r.voltageV,'V',cfg.minVoltageV,v=>v<cfg.minVoltageV,v=>v>=cfg.minVoltageV+2],
-      ['voltage_high','Tegangan tinggi',r.voltageV,'V',cfg.maxVoltageV,v=>v>cfg.maxVoltageV,v=>v<=cfg.maxVoltageV-2],
-      ['current_high','Arus tinggi',r.currentA,'A',cfg.maxCurrentA,v=>v>cfg.maxCurrentA,v=>v<=cfg.maxCurrentA*.95],
-      ['power_high','Daya tinggi',r.powerW,'W',cfg.maxPowerW,v=>v>cfg.maxPowerW,v=>v<=cfg.maxPowerW*.95],
-      ['frequency_low','Frekuensi rendah',r.frequencyHz,'Hz',cfg.minFrequencyHz,v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1],
-      ['frequency_high','Frekuensi tinggi',r.frequencyHz,'Hz',cfg.maxFrequencyHz,v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1],
-      ['pf_low','Power factor rendah',r.powerFactor,'',cfg.minPowerFactor,v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03],
-      ['temperature_high','Suhu tinggi',r.temperatureC,'°C',cfg.maxTemperatureC,v=>v>=cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1],
-      ['humidity_low','Kelembapan rendah',r.humidityPct,'%',cfg.minHumidityPct,v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2],
-      ['humidity_high','Kelembapan tinggi',r.humidityPct,'%',cfg.maxHumidityPct,v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2]
+      ['voltage_low','Tegangan rendah',r.voltageV,'V','≥ '+cfg.minVoltageV+' V',v=>v<cfg.minVoltageV,v=>v>=cfg.minVoltageV+2],
+      ['voltage_high','Tegangan tinggi',r.voltageV,'V','≤ '+cfg.maxVoltageV+' V',v=>v>cfg.maxVoltageV,v=>v<=cfg.maxVoltageV-2],
+      ['current_high','Arus tinggi',r.currentA,'A','≤ '+cfg.maxCurrentA+' A',v=>v>cfg.maxCurrentA,v=>v<=cfg.maxCurrentA*.95],
+      ['power_high','Daya tinggi',r.powerW,'W','≤ '+cfg.maxPowerW+' W',v=>v>cfg.maxPowerW,v=>v<=cfg.maxPowerW*.95],
+      ['frequency_low','Frekuensi rendah',r.frequencyHz,'Hz','≥ '+cfg.minFrequencyHz+' Hz',v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1],
+      ['frequency_high','Frekuensi tinggi',r.frequencyHz,'Hz','≤ '+cfg.maxFrequencyHz+' Hz',v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1],
+      ['pf_low','Power factor rendah',r.powerFactor,'','≥ '+cfg.minPowerFactor,v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03],
+      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+cfg.maxTemperatureC+' °C',v=>v>=cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1],
+      ['humidity_low','Kelembapan rendah',r.humidityPct,'%','≥ '+cfg.minHumidityPct+'%',v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2],
+      ['humidity_high','Kelembapan tinggi',r.humidityPct,'%','≤ '+cfg.maxHumidityPct+'%',v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2]
     ];
     const newlyAbnormal=[],recovered=[];
     checks.forEach(ch=>{
       const raw=ch[2];
       if(raw===null||raw===undefined||raw===''||!Number.isFinite(Number(raw))) return;
       const value=Number(raw),was=!!state.active[ch[0]],bad=ch[5](value);
-      if(bad){
-        state.active[ch[0]]={label:ch[1],value:value,unit:ch[3],threshold:ch[4]};
-        if(!was) newlyAbnormal.push(ch[0]);
-      } else if(was && ch[6](value)){
-        recovered.push({label:ch[1],value:value,unit:ch[3]});
-        delete state.active[ch[0]];
-      } else if(was){
-        state.active[ch[0]].value=value;
-      }
+      if(bad){state.active[ch[0]]={label:ch[1],value:value,unit:ch[3],limit:ch[4]};if(!was)newlyAbnormal.push(ch[0]);}
+      else if(was&&ch[6](value)){recovered.push({label:ch[1],value:value,unit:ch[3]});delete state.active[ch[0]];}
+      else if(was)state.active[ch[0]].value=value;
     });
-
     const activeKeys=Object.keys(state.active);
-    const activeLines=activeKeys.map(k=>{
-      const a=state.active[k];
-      return '• '+a.label+': '+Number(a.value).toFixed(2)+' '+a.unit+' (batas '+a.threshold+' '+a.unit+')';
-    });
+    const activeLines=activeKeys.map(k=>{const a=state.active[k];return '• <b>'+alarmHtml_(a.label)+'</b>: '+Number(a.value).toFixed(2)+' '+alarmHtml_(a.unit)+' <i>(batas '+alarmHtml_(a.limit)+')</i>';});
+    const header='<b>kWh-Ku | MONITORING ALARM</b>\n━━━━━━━━━━━━━━━━━━\n👤 <b>Pelanggan:</b> '+alarmHtml_(name)+'\n🆔 <b>ID:</b> '+alarmHtml_(r.customerId)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(r.deviceId||'-');
     let message='',now=Date.now(),reminderMs=Math.max(5,Number(cfg.reminderIntervalMinutes)||30)*60000;
     if(newlyAbnormal.length){
-      message='⚠️ PERINGATAN SISTEM kWh-Ku\nPelanggan: '+name+' ('+r.customerId+')\nPerangkat: '+(r.deviceId||'-')+'\n\nKondisi abnormal saat ini:\n'+activeLines.join('\n')+'\n\nWaktu: '+time;
+      message='🚨 <b>PERINGATAN SISTEM</b>\n'+header+'\n\n<b>⚠️ PARAMETER ABNORMAL ('+activeLines.length+')</b>\n'+activeLines.join('\n')+'\n\n🕒 <b>Waktu:</b> '+time+'\n━━━━━━━━━━━━━━━━━━\n<i>Segera periksa kondisi instalasi dan perangkat.</i>';
       state.lastReminderAt=now;
     } else if(recovered.length){
-      message='✅ PEMULIHAN SISTEM kWh-Ku\nPelanggan: '+name+' ('+r.customerId+')\nPerangkat: '+(r.deviceId||'-')+'\n\nKembali normal:\n'+recovered.map(a=>'• '+a.label+': '+a.value.toFixed(2)+' '+a.unit).join('\n')+
-        (activeLines.length?'\n\nMasih abnormal:\n'+activeLines.join('\n'):'\n\nSemua parameter kembali normal.')+'\n\nWaktu: '+time;
-      if(!activeLines.length) state.lastReminderAt=0;
-    } else if(activeLines.length && cfg.reminderEnabled && (!state.lastReminderAt || now-state.lastReminderAt>=reminderMs)){
-      message='⏰ PENGINGAT SISTEM kWh-Ku\nPelanggan: '+name+' ('+r.customerId+')\nPerangkat: '+(r.deviceId||'-')+'\n\nKondisi masih abnormal:\n'+activeLines.join('\n')+'\n\nWaktu: '+time;
+      message='✅ <b>PEMBARUAN KONDISI SISTEM</b>\n'+header+'\n\n<b>PARAMETER PULIH ('+recovered.length+')</b>\n'+recovered.map(a=>'• '+alarmHtml_(a.label)+': '+a.value.toFixed(2)+' '+alarmHtml_(a.unit)).join('\n')+
+        (activeLines.length?'\n\n<b>MASIH ABNORMAL ('+activeLines.length+')</b>\n'+activeLines.join('\n'):'\n\n🎉 <b>Semua parameter kembali normal.</b>')+'\n\n🕒 <b>Waktu:</b> '+time;
+      if(!activeLines.length)state.lastReminderAt=0;
+    } else if(activeLines.length&&cfg.reminderEnabled&&(!state.lastReminderAt||now-state.lastReminderAt>=reminderMs)){
+      message='⏰ <b>PENGINGAT KONDISI SISTEM</b>\n'+header+'\n\n<b>MASIH ABNORMAL ('+activeLines.length+')</b>\n'+activeLines.join('\n')+'\n\n🕒 <b>Waktu:</b> '+time+'\n🔁 <i>Interval pengingat: '+cfg.reminderIntervalMinutes+' menit</i>';
       state.lastReminderAt=now;
     }
-
-    if(message){
-      const sent=telegramSend_(message);
-      if(!sent.ok) return {ok:false,message:'Pesan alarm gagal dikirim; status alarm tidak diperbarui.',telegram:sent};
-    }
+    if(message){const sent=telegramSend_(message,'HTML');if(!sent.ok)return {ok:false,message:'Pesan alarm gagal dikirim; status alarm tidak diperbarui.',telegram:sent};}
     props.setProperty(stateKey,JSON.stringify(state));
     return {ok:true,sent:!!message,activeCount:activeKeys.length,recoveredCount:recovered.length};
-  } finally {
-    lock.releaseLock();
-  }
+  } finally {lock.releaseLock();}
 }
 
 // Kirim 10 pesan uji (satu untuk setiap parameter). Jalankan manual dari Apps Script.
 function testTelegramAlarmParameters(){
   const cfg=telegramProperties_();
-  if(!cfg.token||!cfg.chatIds.length) throw new Error('Konfigurasikan TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS di Script Properties.');
+  if(!cfg.token||!cfg.chatIds.length)throw new Error('Konfigurasikan TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS di Script Properties.');
   const message=[
-    '🧪 SIMULASI UJI ALARM TERPADU kWh-Ku',
-    'Pelanggan: SIMULASI',
-    'Perangkat: ESP32-TEST',
+    '🧪 <b>SIMULASI UJI ALARM TERPADU</b>',
+    '━━━━━━━━━━━━━━━━━━',
+    '👤 <b>Pelanggan:</b> SIMULASI',
+    '📟 <b>Perangkat:</b> ESP32-TEST',
     '',
-    'Kondisi abnormal yang disimulasikan:',
-    '• Tegangan rendah: 197 V (batas minimum 198 V)',
-    '• Tegangan tinggi: 232 V (batas maksimum 231 V)',
-    '• Arus tinggi: 4.20 A (batas maksimum 4 A)',
-    '• Daya tinggi: 810 W (batas maksimum 800 W)',
-    '• Frekuensi rendah: 49.40 Hz (batas minimum 49.5 Hz)',
-    '• Frekuensi tinggi: 50.60 Hz (batas maksimum 50.5 Hz)',
-    '• Power factor rendah: 0.80 (batas minimum 0.85)',
-    '• Suhu tinggi: 31 °C (batas maksimum 30 °C)',
-    '• Kelembapan rendah: 39% (batas minimum 40%)',
-    '• Kelembapan tinggi: 71% (batas maksimum 70%)',
+    '<b>⚠️ 10 PARAMETER ABNORMAL</b>',
+    '• Tegangan rendah: <b>197 V</b> <i>(batas ≥ 198 V)</i>',
+    '• Tegangan tinggi: <b>232 V</b> <i>(batas ≤ 231 V)</i>',
+    '• Arus tinggi: <b>4.20 A</b> <i>(batas ≤ 4 A)</i>',
+    '• Daya tinggi: <b>810 W</b> <i>(batas ≤ 800 W)</i>',
+    '• Frekuensi rendah: <b>49.40 Hz</b> <i>(batas ≥ 49.5 Hz)</i>',
+    '• Frekuensi tinggi: <b>50.60 Hz</b> <i>(batas ≤ 50.5 Hz)</i>',
+    '• Power factor rendah: <b>0.80</b> <i>(batas ≥ 0.85)</i>',
+    '• Suhu tinggi: <b>31 °C</b> <i>(batas ≤ 30 °C)</i>',
+    '• Kelembapan rendah: <b>39%</b> <i>(batas ≥ 40%)</i>',
+    '• Kelembapan tinggi: <b>71%</b> <i>(batas ≤ 70%)</i>',
     '',
-    'Ini hanya pesan simulasi, bukan pembacaan sensor nyata.'
+    '━━━━━━━━━━━━━━━━━━',
+    '🕒 <b>Jenis:</b> Pengujian simulasi',
+    '<i>Bukan pembacaan sensor nyata.</i>'
   ].join('\n');
-  return telegramSend_(message);
+  return telegramSend_(message,'HTML');
 }
