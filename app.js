@@ -119,13 +119,13 @@ $('logout').onclick=()=>{session=null;try{sessionStorage.removeItem('kwhku_sessi
 $('mobileMenu').onclick=()=>$('sidebar').classList.toggle('open');
 
 // ---- Navigasi
-const titles={dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],monitoring:['Monitoring Teknis','Pembacaan sensor, status koneksi, dan gangguan'],customers:['Data Pelanggan','Kelola pelanggan terdaftar'],powerRequest:['Pengajuan Penambahan Daya','Ajukan perubahan daya dan pantau status persetujuan']};
+const titles={alarmSettings:['Pengaturan Alarm','Atur ambang peringatan dan pengingat ESP32'],dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],monitoring:['Monitoring Teknis','Pembacaan sensor, status koneksi, dan gangguan'],customers:['Data Pelanggan','Kelola pelanggan terdaftar'],powerRequest:['Pengajuan Penambahan Daya','Ajukan perubahan daya dan pantau status persetujuan']};
 function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));$('page-'+p).classList.add('active');
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
   if(p!=='history'&&selId){selId='';$('historySearch').value=''}
-  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e))}
+  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings')loadAlarmSettings().catch(e=>toast(e.message||e))}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
@@ -359,3 +359,16 @@ $('resetCalculationPeriod').onclick=async()=>{
   }catch(err){toast(err.message||String(err))}
 };
 $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan menghapus riwayat pembacaan dan rekap pemakaian akun Anda dari sistem. Tindakan ini tidak dapat dibatalkan. Lanjutkan?'))return;if(!confirm('Konfirmasi terakhir: hapus semua data pembacaan listrik milik akun Anda?'))return;try{const res=await api('resetCustomerData',session);if(!res?.ok)throw Error(res?.message||'Reset gagal');toast('Data pembacaan berhasil direset');await refresh()}catch(err){toast(err.message||String(err))}};
+
+async function loadAlarmSettings(){
+ const r=await api('getAlarmConfig',session,admin()?$('alarmCustomer').value:undefined);if(!r?.ok)throw Error(r?.message||'Gagal memuat konfigurasi');
+ if(admin())$('alarmCustomer').innerHTML=(r.customers||[]).map(c=>'<option value="'+esc(c.customerId)+'">'+esc(c.customerId+' — '+c.name)+'</option>').join('');
+ $('alarmBuzzerEnabled').checked=!!r.config.buzzerEnabled;$('alarmMaxTemperature').value=r.config.maxTemperatureC;$('alarmMaxCurrent').value=r.config.maxCurrentA;$('alarmReminderEnabled').checked=!!r.config.reminderEnabled;$('alarmReminderInterval').value=r.config.reminderIntervalMinutes;
+ $('alarmConfigStatus').textContent=r.config.updatedAt?'Terakhir disimpan '+new Date(r.config.updatedAt).toLocaleString('id-ID'):'Konfigurasi awal';
+}
+$('alarmCustomer')?.addEventListener('change',()=>loadAlarmSettings().catch(e=>toast(e.message)));
+$('alarmConfigForm')?.addEventListener('submit',async e=>{
+ e.preventDefault();const b=$('saveAlarmConfig');b.disabled=true;b.textContent='Menyimpan…';
+ const cfg={buzzerEnabled:$('alarmBuzzerEnabled').checked,maxTemperatureC:Number($('alarmMaxTemperature').value),maxCurrentA:Number($('alarmMaxCurrent').value),reminderEnabled:$('alarmReminderEnabled').checked,reminderIntervalMinutes:Number($('alarmReminderInterval').value)};
+ try{const r=await api('saveAlarmConfig',session,cfg,admin()?$('alarmCustomer').value:session.customerId);if(!r?.ok)throw Error(r?.message||'Gagal menyimpan');$('alarmConfigStatus').textContent='Tersimpan '+new Date().toLocaleString('id-ID')+'. ESP32 akan mengambil konfigurasi pada sinkronisasi berikutnya.';toast('Konfigurasi alarm tersimpan')}catch(err){toast(err.message||String(err))}finally{b.disabled=false;b.textContent='Simpan konfigurasi'}
+});
