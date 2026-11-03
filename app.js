@@ -40,7 +40,7 @@ const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'shor
 const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const dLabel=k=>dText(k+'T00:00:00');
 const CFG=window.KWHKU_CONFIG||{},DEMO=!CFG.API_URL;
-let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],connections:[],incidents:[],devices:[]},monitoringError='',monitoringLoading=false,selId='',shown=new Date();shown.setDate(1);
+let session=null,customers=[],daily=[],tokens=[],monitoring={readings:[],temperatures:[],connections:[],incidents:[],devices:[]},monitoringError='',monitoringLoading=false,selId='',shown=new Date();shown.setDate(1);
 
 function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3500)}
 // Keep the blocking synchronization overlay visible for at most 10 seconds.
@@ -147,7 +147,7 @@ async function refresh(showLoading=false){
     let monitoringLoaded=false;monitoringLoading=true;monitoringError='';
     const monitoringTask=api('getMonitoring',session,500).then(mon=>{
       if(mon?.ok&&Array.isArray(mon.readings)){
-        monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};
+        monitoring={readings:mon.readings.filter(r=>r&&r.timestamp&&num(r.energyKwh)!==null&&num(r.currentA)!==null&&num(r.voltageV)!==null&&num(r.powerW)!==null),temperatures:Array.isArray(mon.temperatures)?mon.temperatures.filter(r=>r&&r.timestamp&&num(r.temperatureC)!==null&&num(r.humidityPct)!==null):[],connections:Array.isArray(mon.connections)?mon.connections:[],incidents:Array.isArray(mon.incidents)?mon.incidents:[],devices:Array.isArray(mon.devices)?mon.devices:[],checkedAt:mon.checkedAt||new Date().toISOString()};
         monitoringError='';monitoringLoaded=true;
       }else{
         monitoringError=mon?.message||'Respons monitoring tidak sesuai format.';
@@ -296,6 +296,12 @@ function renderMonitoring(){
   $('monPowerFactor').textContent=latest?fmtPF(latest.powerFactor):'—';
   $('monEnergy').textContent=latest?fmtEnergy(latest.energyKwh)+' kWh':'— kWh';
   $('monPower').textContent='Daya '+(latest?fmtW(latest.powerW)+' W':'— W');
+  const visibleTemps=(monitoring.temperatures||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||localDay(r.timestamp)>=monitorStart)&&(!monitorEnd||localDay(r.timestamp)<=monitorEnd)).slice().sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
+  const latestTemp=visibleTemps[0];
+  $('temperatureLatest').textContent=latestTemp?truncateDisplay(latestTemp.temperatureC,1)+' °C':'— °C';
+  $('humidityLatest').textContent=latestTemp?truncateDisplay(latestTemp.humidityPct,1)+' %':'— %';
+  $('temperatureLastSeen').textContent=latestTemp?'Terakhir diterima '+timeLabel(latestTemp.receivedAt||latestTemp.timestamp):'Belum ada data DHT11';
+  $('temperatureReadings').innerHTML=visibleTemps.slice(0,Math.min(100,Number($('monitorLimit')?.value)||5)).map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+truncateDisplay(r.temperatureC,1)+' °C</b></td><td>'+truncateDisplay(r.humidityPct,1)+' %</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada data suhu dan kelembapan dari DHT11.</td></tr>';
   $('monitorReadings').innerHTML=monitoringLoading?'<tr><td colspan="9" class="empty">Sedang memuat pembacaan sensor dari server…</td></tr>':readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmtW(r.powerW)+' W</td><td>'+fmtV(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmtHz(r.frequencyHz)+' Hz</td><td>'+fmtPF(r.powerFactor)+'</td></tr>').join('')||(monitoringError?'<tr><td colspan="9" class="empty">Data monitoring gagal dimuat. Periksa endpoint Google Apps Script dan deployment.</td></tr>':'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>');
   $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
