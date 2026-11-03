@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
 <link rel="preload" href="style.css?v=alarm-settings-v2" as="style">
 <link rel="stylesheet" href="style.css?v=connection-status-v1">
-</head>
+<style>.alarm-threshold-grid{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:18px 24px}.alarm-threshold-grid .field{margin:0}@media(max-width:700px){.alarm-threshold-grid{grid-template-columns:1fr}}</style></head>
 <body>
 <div id="loginView" class="login-wrap">
   <aside class="login-visual">
@@ -116,15 +116,18 @@
       </div>
       <p class="sub monitoring-note">Status Offline berarti tidak ada pembacaan baru selama lebih dari 3 menit. Penyebab spesifik seperti listrik padam atau Wi-Fi terputus tidak dapat dipastikan hanya dari ketiadaan data.</p>
     </section>
-    <section id="page-alarmSettings" class="section"><div class="panel"><div class="panel-head"><div><h3>Konfigurasi alarm dan pengingat</h3><p>Pengaturan ambang suhu disiapkan untuk notifikasi website dan Telegram pada tahap berikutnya.</p></div><span class="badge">Server</span></div><form id="alarmConfigForm" class="alarm-config-form">
- <input id="alarmBuzzerEnabled" type="checkbox" hidden>
- <input id="alarmReminderEnabled" type="checkbox" hidden>
- <div class="field admin-only hidden"><label for="alarmCustomer">Pelanggan</label><select id="alarmCustomer"></select></div>
- <div class="field"><label for="alarmMaxTemperature">Batas suhu ruangan (°C)</label><input id="alarmMaxTemperature" type="number" min="0" max="50" step="1" value="30" required></div>
- <div class="field"><label for="alarmMaxCurrent">Batas arus (A)</label><input id="alarmMaxCurrent" type="number" min="0.01" max="1000" step="0.01" value="4" required></div>
- <div class="field"><label for="alarmReminderInterval">Interval pengingat (menit)</label><input id="alarmReminderInterval" type="number" min="5" max="1440" step="5" value="60" required></div>
- <div class="alarm-config-actions"><button class="primary" id="saveAlarmConfig" type="submit">Simpan konfigurasi</button><span id="alarmConfigStatus" class="sub">Memuat…</span></div>
- </form></div></section><section id="page-powerRequest" class="section">
+    <section id="page-alarmSettings" class="section"><div class="panel"><div class="panel-head"><div><h3>Konfigurasi alarm dan pengingat</h3><p>Pengaturan ambang suhu disiapkan untuk notifikasi website dan Telegram pada tahap berikutnya.</p></div><span class="badge">Server</span></div><form id="alarmConfigForm" class="alarm-config-form"><input id="alarmBuzzerEnabled" type="checkbox" hidden><input id="alarmReminderEnabled" type="checkbox" hidden><div class="field admin-only hidden"><label for="alarmCustomer">Pelanggan</label><select id="alarmCustomer"></select></div><div class="alarm-threshold-grid">
+<div class="field"><label for="alarmMinVoltage">Tegangan minimum (V)</label><input id="alarmMinVoltage" type="number" min="0" max="300" step="0.1" value="198" required></div>
+<div class="field"><label for="alarmMaxVoltage">Tegangan maksimum (V)</label><input id="alarmMaxVoltage" type="number" min="0" max="300" step="0.1" value="231" required></div>
+<div class="field"><label for="alarmMaxCurrent">Arus maksimum (A)</label><input id="alarmMaxCurrent" type="number" min="0.001" max="1000" step="0.01" value="4" required></div>
+<div class="field"><label for="alarmMaxPower">Daya maksimum (W)</label><input id="alarmMaxPower" type="number" min="0" max="10000000" step="1" value="800" required></div>
+<div class="field"><label for="alarmMinFrequency">Frekuensi minimum (Hz)</label><input id="alarmMinFrequency" type="number" min="0" max="1000" step="0.1" value="49.5" required></div>
+<div class="field"><label for="alarmMaxFrequency">Frekuensi maksimum (Hz)</label><input id="alarmMaxFrequency" type="number" min="0" max="1000" step="0.1" value="50.5" required></div>
+<div class="field"><label for="alarmMinPowerFactor">Power factor minimum</label><input id="alarmMinPowerFactor" type="number" min="0" max="1" step="0.01" value="0.85" required></div>
+<div class="field"><label for="alarmMaxTemperature">Suhu maksimum (°C)</label><input id="alarmMaxTemperature" type="number" min="0" max="50" step="0.1" value="30" required></div>
+<div class="field"><label for="alarmMinHumidity">Kelembapan minimum (%)</label><input id="alarmMinHumidity" type="number" min="0" max="100" step="1" value="40" required></div>
+<div class="field"><label for="alarmMaxHumidity">Kelembapan maksimum (%)</label><input id="alarmMaxHumidity" type="number" min="0" max="100" step="1" value="70" required></div>
+</div><div class="field"><label for="alarmReminderInterval">Interval pengingat (menit)</label><input id="alarmReminderInterval" type="number" min="5" max="1440" step="5" value="30" required></div><div class="alarm-config-actions"><button class="primary" id="saveAlarmConfig" type="submit">Simpan konfigurasi</button><span id="alarmConfigStatus" class="sub">Memuat…</span></div></form></div></section><section id="page-powerRequest" class="section">
       <div class="grid-two">
         <div class="panel"><div class="panel-head"><div><h3>Pengajuan penambahan daya</h3><p>Pilih daya baru dan tuliskan alasan pengajuan.</p></div></div>
           <form id="powerRequestForm"><div class="field"><label for="requestedPowerVa">Daya yang diajukan</label><select id="requestedPowerVa" required><option value="900">900 VA</option><option value="1300">1.300 VA</option><option value="2200">2.200 VA</option><option value="3500">3.500 VA</option><option value="5500">5.500 VA</option><option value="6600">6.600 VA</option><option value="7700">7.700 VA</option><option value="10600">10.600 VA</option></select></div>
