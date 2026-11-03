@@ -855,12 +855,12 @@ function evaluateTemperatureTelegramAlert_(reading) {
   const time = Utilities.formatDate(reading.receivedAt, Session.getScriptTimeZone() || 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
   if (isAlert && !wasAlert) {
     const result = telegramSend_(
-      '⚠️ PERINGATAN SUHU kWh-Ku\\n' +
-      'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\\n' +
-      'Perangkat: ' + reading.deviceId + '\\n' +
-      'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C\\n' +
-      'Ambang: ' + threshold.toFixed(1) + ' °C\\n' +
-      'Kelembapan: ' + reading.humidityPct.toFixed(1) + '%\\n' +
+      '⚠️ PERINGATAN SUHU kWh-Ku\n' +
+      'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\n' +
+      'Perangkat: ' + reading.deviceId + '\n' +
+      'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C\n' +
+      'Ambang: ' + threshold.toFixed(1) + ' °C\n' +
+      'Kelembapan: ' + reading.humidityPct.toFixed(1) + '%\n' +
       'Waktu: ' + time
     );
     if (result.ok) cache.put(key,'1',21600);
@@ -869,22 +869,22 @@ function evaluateTemperatureTelegramAlert_(reading) {
     const reminderKey = key + '_reminder';
     if (!cache.get(reminderKey)) {
       const result = telegramSend_(
-        '⏰ PENGINGAT SUHU MASIH TINGGI\\n' +
-        'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\\n' +
-        'Perangkat: ' + reading.deviceId + '\\n' +
-        'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C (ambang ' + threshold.toFixed(1) + ' °C)\\n' +
-        'Kelembapan: ' + reading.humidityPct.toFixed(1) + '%\\n' +
+        '⏰ PENGINGAT SUHU MASIH TINGGI\n' +
+        'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\n' +
+        'Perangkat: ' + reading.deviceId + '\n' +
+        'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C (ambang ' + threshold.toFixed(1) + ' °C)\n' +
+        'Kelembapan: ' + reading.humidityPct.toFixed(1) + '%\n' +
         'Waktu: ' + time
       );
       if (result.ok) cache.put(reminderKey,'1',1800);
     }
   } else if (!isAlert && wasAlert && reading.temperatureC <= threshold - 1) {
     const result = telegramSend_(
-      '✅ SUHU KEMBALI NORMAL kWh-Ku\\n' +
-      'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\\n' +
-      'Perangkat: ' + reading.deviceId + '\\n' +
-      'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C\\n' +
-      'Ambang peringatan: ' + threshold.toFixed(1) + ' °C\\n' +
+      '✅ SUHU KEMBALI NORMAL kWh-Ku\n' +
+      'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\n' +
+      'Perangkat: ' + reading.deviceId + '\n' +
+      'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C\n' +
+      'Ambang peringatan: ' + threshold.toFixed(1) + ' °C\n' +
       'Waktu: ' + time
     );
     if (result.ok) {
