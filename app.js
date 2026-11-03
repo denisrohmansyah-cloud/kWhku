@@ -53,15 +53,15 @@ function beginSyncOverlay(){
 async function api(fn,...args){
   if(DEMO)throw Error('Server belum dikonfigurasi. Data demo dinonaktifkan.');
   const controller=new AbortController();
-  // Monitoring reads several Sheets tabs and can take longer than a dashboard summary.
-  // Give the monitoring endpoint more time so the UI does not report false data failures.
-  const timeoutMs=fn==='getMonitoring'?20000:10000;
+  // Apps Script can be slow during cold starts and when reading a large Sheets history.
+  // Keep enough time for the server to finish instead of aborting valid requests too early.
+  const timeoutMs=fn==='getMonitoring'?40000:30000;
   const timeout=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const r=await fetch(CFG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args}),signal:controller.signal,cache:'no-store'});
     if(!r.ok)throw Error('Server '+r.status);
     return await r.json();
-  }catch(err){if(err?.name==='AbortError')throw Error('Server belum merespons dalam 5 detik. Periksa koneksi atau coba sinkronkan kembali.');throw err}
+  }catch(err){if(err?.name==='AbortError')throw Error('Server belum merespons dalam batas waktu. Periksa deployment Apps Script, akses Google Sheets, atau coba lagi.');throw err}
   finally{clearTimeout(timeout)}
 }
 const admin=()=>session?.role==='ADMIN';
