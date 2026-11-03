@@ -38,7 +38,8 @@ const SHEETS = {
   connections: ['Log_Koneksi', ['timestamp','customerId','meterId','status','lastReceivedAt','details']],
   incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
   powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']],
-  resetPeriods: ['Periode_Reset', ['customerId','resetAt','baselineEnergyKwh','createdAt']]
+  resetPeriods: ['Periode_Reset', ['customerId','resetAt','baselineEnergyKwh','createdAt']],
+  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy']]
 };
 
 function doGet(e) {
@@ -493,6 +494,7 @@ function doPost(e) {
   try {
     assertConfigured_();
     const body=JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (body.fn === 'getDeviceConfig') return json_(getDeviceAlarmConfig_(body));
     if (body.fn) return json_(handleApi_(body)); // permintaan dari website
 
     // API perangkat ESP32 (shared key hanya untuk perangkat, bukan browser).
@@ -757,6 +759,44 @@ function truthy_(v){return v===true||String(v).toLowerCase()==='true'||String(v)
 function safeEqual_(a,b){if(a.length!==b.length)return false;let out=0;for(let i=0;i<a.length;i++)out|=a.charCodeAt(i)^b.charCodeAt(i);return out===0;}
 function json_(obj){return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);}
 
+
+const DEFAULT_ALARM_CONFIG_={buzzerEnabled:true,maxTemperatureC:30,maxCurrentA:4,reminderEnabled:true,reminderIntervalMinutes:60};
+function ensureAlarmConfigSheet_(){
+ const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID),[name,headers]=SHEETS.alarmConfig;
+ let sh=ss.getSheetByName(name);if(!sh){sh=ss.insertSheet(name);sh.getRange(1,1,1,headers.length).setValues([headers]);sh.setFrozenRows(1);sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#e32636').setFontColor('#fff');}return sh;
+}
+function alarmConfigFor_(customerId){
+ const sh=ensureAlarmConfigSheet_(),row=getRows_('alarmConfig').find(r=>String(r.customerId)===String(customerId));
+ if(!row){const d=DEFAULT_ALARM_CONFIG_;sh.appendRow([customerId,d.buzzerEnabled,d.maxTemperatureC,d.maxCurrentA,d.reminderEnabled,d.reminderIntervalMinutes,new Date(),'SYSTEM_DEFAULT']);return {...d,updatedAt:'',updatedBy:'SYSTEM_DEFAULT'};}
+ return {buzzerEnabled:truthy_(row.buzzerEnabled),maxTemperatureC:Number(row.maxTemperatureC),maxCurrentA:Number(row.maxCurrentA),reminderEnabled:truthy_(row.reminderEnabled),reminderIntervalMinutes:Number(row.reminderIntervalMinutes),updatedAt:row.updatedAt?new Date(row.updatedAt).toISOString():'',updatedBy:String(row.updatedBy||'')};
+}
+function getAlarmConfig(session,targetId){
+ const s=validateSession_(session);if(!s.ok)return s;
+ let id=s.role==='ADMIN'?String(targetId||''):s.customerId;
+ if(s.role==='ADMIN'&&!id){const first=getRows_('Pelanggan').find(c=>truthy_(c.active));id=first?String(first.customerId):'';}
+ if(!id)return {ok:true,customers:[],config:DEFAULT_ALARM_CONFIG_};
+ if(s.role==='ADMIN'&&!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan.'};
+ return {ok:true,customerId:id,customers:s.role==='ADMIN'?getRows_('Pelanggan').filter(c=>truthy_(c.active)).map(c=>({customerId:String(c.customerId),name:String(c.name||c.customerId)})):undefined,config:alarmConfigFor_(id)};
+}
+function saveAlarmConfig(session,config,targetId){
+ const s=validateSession_(session);if(!s.ok)return s;
+ const id=s.role==='ADMIN'?String(targetId||''):s.customerId;
+ if(!id||!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan atau tidak aktif.'};
+ const c=config||{},v={buzzerEnabled:truthy_(c.buzzerEnabled),maxTemperatureC:Number(c.maxTemperatureC),maxCurrentA:Number(c.maxCurrentA),reminderEnabled:truthy_(c.reminderEnabled),reminderIntervalMinutes:Number(c.reminderIntervalMinutes)};
+ if(!Number.isFinite(v.maxTemperatureC)||v.maxTemperatureC<0||v.maxTemperatureC>50)return {ok:false,message:'Batas suhu harus 0–50°C sesuai rentang DHT11.'};
+ if(!Number.isFinite(v.maxCurrentA)||v.maxCurrentA<=0||v.maxCurrentA>1000)return {ok:false,message:'Batas arus tidak valid.'};
+ if(!Number.isInteger(v.reminderIntervalMinutes)||v.reminderIntervalMinutes<5||v.reminderIntervalMinutes>1440)return {ok:false,message:'Interval pengingat harus 5–1440 menit.'};
+ const sh=ensureAlarmConfigSheet_(),rows=getRows_('alarmConfig'),i=rows.findIndex(r=>String(r.customerId)===id),now=new Date(),values=[id,v.buzzerEnabled,v.maxTemperatureC,v.maxCurrentA,v.reminderEnabled,v.reminderIntervalMinutes,now,s.username];
+ if(i<0)sh.appendRow(values);else sh.getRange(i+2,1,1,values.length).setValues([values]);
+ return {ok:true,customerId:id,config:{...v,updatedAt:now.toISOString(),updatedBy:s.username},message:'Konfigurasi tersimpan di server.'};
+}
+function getDeviceAlarmConfig_(body){
+ assertConfigured_();if(!safeEqual_(String(body.apiKey||''),CONFIG.DEVICE_API_KEY)||CONFIG.DEVICE_API_KEY.indexOf('REPLACE_')===0)return {ok:false,message:'Unauthorized device'};
+ const id=String(body.customerId||''),meter=String(body.deviceId||'');
+ if(!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&String(c.meterId)===meter&&truthy_(c.active)))return {ok:false,message:'Unknown device/customer'};
+ return {ok:true,customerId:id,deviceId:meter,config:alarmConfigFor_(id),serverTime:new Date().toISOString()};
+}
+
 /** Router API untuk website (POST text/plain berisi JSON {fn,args}). */
 function handleApi_(body){
   const a=Array.isArray(body.args)?body.args:[];
@@ -765,6 +805,8 @@ function handleApi_(body){
       case 'login': return apiLogin_(a[0],a[1]);
       case 'getDashboard': return getDashboard(a[0]);
       case 'getMonitoring': return getMonitoring(a[0],a[1]);
+      case 'getAlarmConfig': return getAlarmConfig(a[0],a[1]);
+      case 'saveAlarmConfig': return saveAlarmConfig(a[0],a[1],a[2]);
       case 'getHistory': return getHistory(a[0],a[1],a[2]);
       case 'getTokens': return getTokens(a[0]);
       case 'adminCreateCustomer': return adminCreateCustomer(a[0],a[1]||{});
