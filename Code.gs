@@ -557,7 +557,7 @@ function doPost(e) {
       readingSheet.showColumns(8, 4);
       // Simpan suhu dan kelembapan hanya jika ESP32 mengirim pembacaan valid.
       if (temperatureC !== null && temperatureC >= 0 && temperatureC <= 50 &&
-          humidityPct !== null && humidityPct >= 20 && humidityPct <= 90) {
+          humidityPct !== null && humidityPct >= 0 && humidityPct <= 100) {
         const temperatureSheet = ss.getSheetByName('Data_Suhu') || ss.insertSheet('Data_Suhu');
         if (temperatureSheet.getLastRow() === 0) {
           temperatureSheet.getRange(1,1,1,SHEETS.temperature[1].length).setValues([SHEETS.temperature[1]]);
@@ -672,7 +672,17 @@ function getMonitoring(session, limit) {
     lastReceivedAt:r.lastReceivedAt ? new Date(r.lastReceivedAt).toISOString() : '',
     lastStatusChangeAt:r.lastStatusChangeAt ? new Date(r.lastStatusChangeAt).toISOString() : ''
   }));
-  return {ok:true,readings,connections,incidents,devices,checkedAt:new Date().toISOString()};
+  // Data suhu dipisahkan dari Data_Listrik agar skema pengukuran energi tetap utuh.
+  const temperatures = getRows_('temperature').filter(r => ids.includes(String(r.customerId)))
+    .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp))
+    .slice(0, Math.min(Math.max(Number(limit)||100,1),500))
+    .map(r => ({
+      timestamp:new Date(r.timestamp).toISOString(),
+      receivedAt:r.receivedAt ? new Date(r.receivedAt).toISOString() : new Date(r.timestamp).toISOString(),
+      customerId:String(r.customerId),meterId:String(r.meterId),
+      temperatureC:Number(r.temperatureC),humidityPct:Number(r.humidityPct)
+    }));
+  return {ok:true,readings,temperatures,connections,incidents,devices,checkedAt:new Date().toISOString()};
 }
 
 // Pemeriksaan terjadwal berjalan di server walaupun website tidak dibuka.
