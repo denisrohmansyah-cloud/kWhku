@@ -39,7 +39,8 @@ const SHEETS = {
   incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
   powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']],
   resetPeriods: ['Periode_Reset', ['customerId','resetAt','baselineEnergyKwh','createdAt']],
-  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy']]
+  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy']],
+  temperature: ['Data_Suhu', ['timestamp','customerId','meterId','temperatureC','humidityPct','receivedAt']]
 };
 
 function doGet(e) {
@@ -508,6 +509,7 @@ function doPost(e) {
     const energy=measurementNumber_(body.energyKwh);
     const voltage=measurementNumber_(body.voltageV ?? 0), current=measurementNumber_(body.currentA ?? 0), power=measurementNumber_(body.powerW ?? 0);
     const frequency=measurementNumber_(body.frequencyHz ?? 0), pf=measurementNumber_(body.powerFactor ?? 0);
+    const temperatureC=measurementNumber_(body.temperatureC), humidityPct=measurementNumber_(body.humidityPct);
     if(!Number.isFinite(energy)||energy<0||energy>1e9||
        ![voltage,current,power,frequency,pf].every(Number.isFinite)||
        voltage<0||voltage>300||current<0||current>1000||power<0||power>1e7||frequency<0||frequency>1000||pf<0||pf>1) {
@@ -553,6 +555,16 @@ function doPost(e) {
       readingSheet.showColumns(12, 6);
       // Pastikan kolom H:K terlihat.
       readingSheet.showColumns(8, 4);
+      // Simpan suhu dan kelembapan hanya jika ESP32 mengirim pembacaan valid.
+      if (temperatureC !== null && temperatureC >= 0 && temperatureC <= 50 &&
+          humidityPct !== null && humidityPct >= 20 && humidityPct <= 90) {
+        const temperatureSheet = ss.getSheetByName('Data_Suhu') || ss.insertSheet('Data_Suhu');
+        if (temperatureSheet.getLastRow() === 0) {
+          temperatureSheet.getRange(1,1,1,SHEETS.temperature[1].length).setValues([SHEETS.temperature[1]]);
+          temperatureSheet.setFrozenRows(1);
+        }
+        temperatureSheet.appendRow([timestamp,customerId,deviceId,temperatureC,humidityPct,receivedAt]);
+      }
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
     return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
