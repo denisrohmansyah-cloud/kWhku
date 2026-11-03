@@ -39,7 +39,7 @@ const SHEETS = {
   incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
   powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']],
   resetPeriods: ['Periode_Reset', ['customerId','resetAt','baselineEnergyKwh','createdAt']],
-  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy']],
+  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct']],
   temperature: ['Data_Suhu', ['timestamp','customerId','meterId','temperatureC','humidityPct','receivedAt']]
 };
 
@@ -541,7 +541,7 @@ function doPost(e) {
     const parsedTimestamp=body.timestamp ? new Date(body.timestamp) : new Date();
     if (isNaN(parsedTimestamp.getTime())) return json_({ok:false,message:'Invalid timestamp'});
     const timestamp=parsedTimestamp;
-    let telegramTemperatureAlert = null;
+    let telegramReadingAlert = null;
     const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     const lock=LockService.getScriptLock();
     lock.waitLock(10000);
@@ -583,15 +583,17 @@ function doPost(e) {
           humidityPct !== null && humidityPct >= 0 && humidityPct <= 100) {
         const temperatureSheet = ensureTemperatureSheet_(ss);
         temperatureSheet.appendRow([timestamp,customerId,deviceId,temperatureC,humidityPct,receivedAt]);
-        telegramTemperatureAlert = {customerId,deviceId,temperatureC,humidityPct,receivedAt};
+        telegramReadingAlert = {customerId,deviceId,temperatureC,humidityPct,voltageV:voltage,currentA:current,powerW:power,frequencyHz:frequency,powerFactor:pf,receivedAt};
       }
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
     // Kirim notifikasi setelah lock spreadsheet dilepas agar tidak menahan proses penyimpanan.
-    if (telegramTemperatureAlert) {
-      try { evaluateTemperatureTelegramAlert_(telegramTemperatureAlert); }
-      catch (telegramError) { console.error('Telegram notification error:', telegramError); }
-    }
+    try {
+      evaluateMultiParameterTelegramAlert_(telegramReadingAlert || {
+        customerId,deviceId,voltageV:voltage,currentA:current,powerW:power,
+        frequencyHz:frequency,powerFactor:pf,receivedAt:new Date()
+      });
+    } catch (telegramError) { console.error('Telegram notification error:',telegramError); }
     return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
   } catch(err) {
     console.error('doPost error:', err);
@@ -919,35 +921,65 @@ function testTelegramBot() {
   return telegramSend_('✅ Bot notifikasi kWh-Ku berhasil terhubung.\nPengujian Telegram berhasil.');
 }
 
-const DEFAULT_ALARM_CONFIG_={buzzerEnabled:true,maxTemperatureC:30,maxCurrentA:4,reminderEnabled:true,reminderIntervalMinutes:60};
+const DEFAULT_ALARM_CONFIG_ = {
+  buzzerEnabled:true, maxTemperatureC:30, maxCurrentA:4,
+  minVoltageV:198, maxVoltageV:231, maxPowerW:800,
+  minFrequencyHz:49.5, maxFrequencyHz:50.5, minPowerFactor:0.85,
+  minHumidityPct:40, maxHumidityPct:70,
+  reminderEnabled:true, reminderIntervalMinutes:30
+};
 function ensureAlarmConfigSheet_(){
- const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID),[name,headers]=SHEETS.alarmConfig;
- let sh=ss.getSheetByName(name);if(!sh){sh=ss.insertSheet(name);sh.getRange(1,1,1,headers.length).setValues([headers]);sh.setFrozenRows(1);sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#e32636').setFontColor('#fff');}return sh;
+  const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID),[name,headers]=SHEETS.alarmConfig;
+  let sh=ss.getSheetByName(name);
+  if(!sh){sh=ss.insertSheet(name);sh.getRange(1,1,1,headers.length).setValues([headers]);sh.setFrozenRows(1);}
+  else {
+    const existing=sh.getRange(1,1,1,Math.max(1,sh.getLastColumn())).getValues()[0].map(String);
+    headers.forEach(h=>{if(existing.indexOf(h)<0)sh.getRange(1,sh.getLastColumn()+1).setValue(h);});
+  }
+  return sh;
 }
 function alarmConfigFor_(customerId){
- const sh=ensureAlarmConfigSheet_(),row=getRows_('alarmConfig').find(r=>String(r.customerId)===String(customerId));
- if(!row){const d=DEFAULT_ALARM_CONFIG_;sh.appendRow([customerId,d.buzzerEnabled,d.maxTemperatureC,d.maxCurrentA,d.reminderEnabled,d.reminderIntervalMinutes,new Date(),'SYSTEM_DEFAULT']);return {...d,updatedAt:'',updatedBy:'SYSTEM_DEFAULT'};}
- return {buzzerEnabled:truthy_(row.buzzerEnabled),maxTemperatureC:Number(row.maxTemperatureC),maxCurrentA:Number(row.maxCurrentA),reminderEnabled:truthy_(row.reminderEnabled),reminderIntervalMinutes:Number(row.reminderIntervalMinutes),updatedAt:row.updatedAt?new Date(row.updatedAt).toISOString():'',updatedBy:String(row.updatedBy||'')};
+  const sh=ensureAlarmConfigSheet_(),row=getRows_('alarmConfig').find(r=>String(r.customerId)===String(customerId));
+  if(!row){
+    const d=DEFAULT_ALARM_CONFIG_;
+    sh.appendRow(SHEETS.alarmConfig[1].map(k=>k==='customerId'?customerId:k==='updatedAt'?new Date():k==='updatedBy'?'SYSTEM_DEFAULT':d[k]===undefined?'':d[k]));
+    return Object.assign({},d,{updatedAt:'',updatedBy:'SYSTEM_DEFAULT'});
+  }
+  const cfg={};
+  SHEETS.alarmConfig[1].forEach(k=>{if(k!=='customerId'&&k!=='updatedAt'&&k!=='updatedBy')cfg[k]=row[k]===''||row[k]===undefined?DEFAULT_ALARM_CONFIG_[k]:row[k];});
+  ['maxTemperatureC','maxCurrentA','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct','reminderIntervalMinutes'].forEach(k=>cfg[k]=Number(cfg[k]));
+  cfg.buzzerEnabled=truthy_(cfg.buzzerEnabled);cfg.reminderEnabled=truthy_(cfg.reminderEnabled);
+  cfg.updatedAt=row.updatedAt?new Date(row.updatedAt).toISOString():'';
+  cfg.updatedBy=String(row.updatedBy||'');
+  return cfg;
 }
 function getAlarmConfig(session,targetId){
- const s=validateSession_(session);if(!s.ok)return s;
- let id=s.role==='ADMIN'?String(targetId||''):s.customerId;
- if(s.role==='ADMIN'&&!id){const first=getRows_('Pelanggan').find(c=>truthy_(c.active));id=first?String(first.customerId):'';}
- if(!id)return {ok:true,customers:[],config:DEFAULT_ALARM_CONFIG_};
- if(s.role==='ADMIN'&&!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan.'};
- return {ok:true,customerId:id,customers:s.role==='ADMIN'?getRows_('Pelanggan').filter(c=>truthy_(c.active)).map(c=>({customerId:String(c.customerId),name:String(c.name||c.customerId)})):undefined,config:alarmConfigFor_(id)};
+  const s=validateSession_(session);if(!s.ok)return s;
+  let id=s.role==='ADMIN'?String(targetId||''):s.customerId;
+  if(s.role==='ADMIN'&&!id){const first=getRows_('Pelanggan').find(c=>truthy_(c.active));id=first?String(first.customerId):'';}
+  if(!id)return {ok:true,customers:[],config:DEFAULT_ALARM_CONFIG_};
+  if(s.role==='ADMIN'&&!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan.'};
+  return {ok:true,customerId:id,customers:s.role==='ADMIN'?getRows_('Pelanggan').filter(c=>truthy_(c.active)).map(c=>({customerId:String(c.customerId),name:String(c.name||c.customerId)})):undefined,config:alarmConfigFor_(id)};
 }
 function saveAlarmConfig(session,config,targetId){
- const s=validateSession_(session);if(!s.ok)return s;
- const id=s.role==='ADMIN'?String(targetId||''):s.customerId;
- if(!id||!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan atau tidak aktif.'};
- const c=config||{},v={buzzerEnabled:truthy_(c.buzzerEnabled),maxTemperatureC:Number(c.maxTemperatureC),maxCurrentA:Number(c.maxCurrentA),reminderEnabled:truthy_(c.reminderEnabled),reminderIntervalMinutes:Number(c.reminderIntervalMinutes)};
- if(!Number.isFinite(v.maxTemperatureC)||v.maxTemperatureC<0||v.maxTemperatureC>50)return {ok:false,message:'Batas suhu harus 0–50°C sesuai rentang DHT11.'};
- if(!Number.isFinite(v.maxCurrentA)||v.maxCurrentA<=0||v.maxCurrentA>1000)return {ok:false,message:'Batas arus tidak valid.'};
- if(!Number.isInteger(v.reminderIntervalMinutes)||v.reminderIntervalMinutes<5||v.reminderIntervalMinutes>1440)return {ok:false,message:'Interval pengingat harus 5–1440 menit.'};
- const sh=ensureAlarmConfigSheet_(),rows=getRows_('alarmConfig'),i=rows.findIndex(r=>String(r.customerId)===id),now=new Date(),values=[id,v.buzzerEnabled,v.maxTemperatureC,v.maxCurrentA,v.reminderEnabled,v.reminderIntervalMinutes,now,s.username];
- if(i<0)sh.appendRow(values);else sh.getRange(i+2,1,1,values.length).setValues([values]);
- return {ok:true,customerId:id,config:{...v,updatedAt:now.toISOString(),updatedBy:s.username},message:'Konfigurasi tersimpan di server.'};
+  const s=validateSession_(session);if(!s.ok)return s;
+  const id=s.role==='ADMIN'?String(targetId||''):s.customerId;
+  if(!id||!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan atau tidak aktif.'};
+  const c=config||{},v={
+    buzzerEnabled:truthy_(c.buzzerEnabled),maxTemperatureC:Number(c.maxTemperatureC),maxCurrentA:Number(c.maxCurrentA),
+    minVoltageV:Number(c.minVoltageV),maxVoltageV:Number(c.maxVoltageV),maxPowerW:Number(c.maxPowerW),
+    minFrequencyHz:Number(c.minFrequencyHz),maxFrequencyHz:Number(c.maxFrequencyHz),minPowerFactor:Number(c.minPowerFactor),
+    minHumidityPct:Number(c.minHumidityPct),maxHumidityPct:Number(c.maxHumidityPct),
+    reminderEnabled:truthy_(c.reminderEnabled),reminderIntervalMinutes:Number(c.reminderIntervalMinutes)
+  };
+  const ranges={maxTemperatureC:[0,50],maxCurrentA:[0.001,1000],minVoltageV:[0,300],maxVoltageV:[0,300],maxPowerW:[0,10000000],minFrequencyHz:[0,1000],maxFrequencyHz:[0,1000],minPowerFactor:[0,1],minHumidityPct:[0,100],maxHumidityPct:[0,100]};
+  for(const k in ranges){const n=v[k],r=ranges[k];if(!Number.isFinite(n)||n<r[0]||n>r[1])return {ok:false,message:'Nilai '+k+' tidak valid.'};}
+  if(v.minVoltageV>=v.maxVoltageV||v.minFrequencyHz>=v.maxFrequencyHz||v.minHumidityPct>=v.maxHumidityPct)return {ok:false,message:'Batas minimum harus lebih kecil dari batas maksimum.'};
+  if(!Number.isInteger(v.reminderIntervalMinutes)||v.reminderIntervalMinutes<5||v.reminderIntervalMinutes>1440)return {ok:false,message:'Interval pengingat harus 5–1440 menit.'};
+  const sh=ensureAlarmConfigSheet_(),rows=getRows_('alarmConfig'),i=rows.findIndex(r=>String(r.customerId)===id),now=new Date();
+  const values=SHEETS.alarmConfig[1].map(k=>k==='customerId'?id:k==='updatedAt'?now:k==='updatedBy'?s.username:v[k]);
+  if(i<0)sh.appendRow(values);else sh.getRange(i+2,1,1,values.length).setValues([values]);
+  return {ok:true,customerId:id,config:Object.assign({},v,{updatedAt:now.toISOString(),updatedBy:s.username}),message:'Konfigurasi alarm tersimpan.'};
 }
 function getDeviceAlarmConfig_(body){
  assertConfigured_();if(!safeEqual_(String(body.apiKey||''),CONFIG.DEVICE_API_KEY)||CONFIG.DEVICE_API_KEY.indexOf('REPLACE_')===0)return {ok:false,message:'Unauthorized device'};
@@ -1013,4 +1045,50 @@ function dailyUsage_(readingsDesc,tariff,customerId){
     }
   }
   return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:m[k],costRp:m[k]*tariff}));
+}
+
+
+function evaluateMultiParameterTelegramAlert_(r){
+  const cfg=alarmConfigFor_(r.customerId),cache=CacheService.getScriptCache();
+  const customer=getRows_('Pelanggan').find(x=>String(x.customerId)===String(r.customerId));
+  const name=customer?String(customer.name||customer.customerId):String(r.customerId);
+  const time=Utilities.formatDate(r.receivedAt||new Date(),CONFIG.TIME_ZONE,'dd/MM/yyyy HH:mm:ss');
+  const reminderSeconds=Math.max(5,Number(cfg.reminderIntervalMinutes)||30)*60;
+  const checks=[
+    ['voltage_low','TEGANGAN RENDAH',r.voltageV,'V',cfg.minVoltageV,v=>v<cfg.minVoltageV,v=>v>=cfg.minVoltageV+2],
+    ['voltage_high','TEGANGAN TINGGI',r.voltageV,'V',cfg.maxVoltageV,v=>v>cfg.maxVoltageV,v=>v<=cfg.maxVoltageV-2],
+    ['current_high','ARUS TINGGI',r.currentA,'A',cfg.maxCurrentA,v=>v>cfg.maxCurrentA,v=>v<=cfg.maxCurrentA*.95],
+    ['power_high','DAYA TINGGI',r.powerW,'W',cfg.maxPowerW,v=>v>cfg.maxPowerW,v=>v<=cfg.maxPowerW*.95],
+    ['frequency_low','FREKUENSI RENDAH',r.frequencyHz,'Hz',cfg.minFrequencyHz,v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1],
+    ['frequency_high','FREKUENSI TINGGI',r.frequencyHz,'Hz',cfg.maxFrequencyHz,v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1],
+    ['pf_low','POWER FACTOR RENDAH',r.powerFactor,'',cfg.minPowerFactor,v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03],
+    ['temperature_high','SUHU TINGGI',r.temperatureC,'°C',cfg.maxTemperatureC,v=>v>=cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1],
+    ['humidity_low','KELEMBAPAN RENDAH',r.humidityPct,'%',cfg.minHumidityPct,v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2],
+    ['humidity_high','KELEMBAPAN TINGGI',r.humidityPct,'%',cfg.maxHumidityPct,v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2]
+  ];
+  checks.forEach(ch=>{
+    const raw=ch[2];if(raw===null||raw===undefined||raw===''||!Number.isFinite(Number(raw)))return;
+    const value=Number(raw),key='kwhku_alarm_'+String(r.customerId).replace(/[^A-Za-z0-9_-]/g,'_')+'_'+ch[0];
+    const was=cache.get(key)==='1',bad=ch[5](value);let message='';
+    if(bad&&!was)message='⚠️ PERINGATAN '+ch[1]+' — kWh-Ku\nPelanggan: '+name+' ('+r.customerId+')\nPerangkat: '+r.deviceId+'\nNilai: '+value.toFixed(2)+' '+ch[3]+'\nAmbang: '+ch[4]+' '+ch[3]+'\nWaktu: '+time;
+    else if(bad&&was&&cfg.reminderEnabled&&!cache.get(key+'_reminder'))message='⏰ PENGINGAT '+ch[1]+' MASIH ABNORMAL — kWh-Ku\nPelanggan: '+name+' ('+r.customerId+')\nPerangkat: '+r.deviceId+'\nNilai: '+value.toFixed(2)+' '+ch[3]+'\nAmbang: '+ch[4]+' '+ch[3]+'\nWaktu: '+time;
+    else if(was&&ch[6](value))message='✅ '+ch[1]+' KEMBALI NORMAL — kWh-Ku\nPelanggan: '+name+' ('+r.customerId+')\nPerangkat: '+r.deviceId+'\nNilai: '+value.toFixed(2)+' '+ch[3]+'\nWaktu: '+time;
+    if(!message)return;
+    const sent=telegramSend_(message);
+    if(sent.ok){if(bad&&!was)cache.put(key,'1',21600);else if(bad)cache.put(key+'_reminder','1',reminderSeconds);else{cache.remove(key);cache.remove(key+'_reminder');}}
+  });
+}
+
+// Kirim 10 pesan uji (satu untuk setiap parameter). Jalankan manual dari Apps Script.
+function testTelegramAlarmParameters(){
+  const cfg=telegramProperties_();if(!cfg.token||!cfg.chatIds.length)throw new Error('Konfigurasikan TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS di Script Properties.');
+  const cases=[
+    ['Tegangan rendah','197 V','ambang 198 V'],['Tegangan tinggi','232 V','ambang 231 V'],
+    ['Arus tinggi','4.2 A','ambang 4 A'],['Daya tinggi','810 W','ambang 800 W'],
+    ['Frekuensi rendah','49.4 Hz','ambang 49.5 Hz'],['Frekuensi tinggi','50.6 Hz','ambang 50.5 Hz'],
+    ['Power factor rendah','0.80','ambang 0.85'],['Suhu tinggi','31 °C','ambang 30 °C'],
+    ['Kelembapan rendah','39%','ambang 40%'],['Kelembapan tinggi','71%','ambang 70%']
+  ];
+  const results=cases.map(c=>({parameter:c[0],result:telegramSend_('🧪 UJI ALARM kWh-Ku\nParameter: '+c[0]+'\nNilai simulasi: '+c[1]+'\nBatas: '+c[2]+'\nIni pesan pengujian, bukan pembacaan sensor nyata.')})); 
+  return {ok:results.every(x=>x.result.ok),results};
 }
