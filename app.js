@@ -135,6 +135,9 @@ async function refresh(showLoading=false){
   try{
     const res=await api('getDashboard',session);
     if(!res?.ok){if(/Sesi/i.test(res?.message||''))$('logout').click();throw Error(res?.message||'Data gagal dimuat')}
+    // A successful dashboard response confirms the API server is reachable.
+    // Technical monitoring is a separate endpoint and must not mark the whole server offline.
+    setConnectionStatus('is-connected','TERHUBUNG DENGAN SERVER');
     const nextCustomers=Array.isArray(res.customers)?res.customers:[];
     const allowed=new Set(nextCustomers.map(c=>c.customerId));
     const nextDaily=(Array.isArray(res.daily)?res.daily:[]).filter(r=>allowed.has(r.customerId)&&r.date&&num(r.kwh)!==null&&num(r.costRp)!==null);
@@ -155,17 +158,12 @@ async function refresh(showLoading=false){
       console.warn(monitoringError,err);
     });
 
-    // Dashboard summary may render while monitoring is loading, but do not claim
-    // the whole site is ready until the technical data endpoint has responded.
-    setConnectionStatus('is-connecting','MENGHUBUNGKAN KE SERVER');
+    // The main API is already confirmed online by getDashboard().
+    // A monitoring endpoint failure is reported inside Monitoring Teknis only.
     renderAll();
     await monitoringTask;
     monitoringLoading=false;
-    if(session){
-      if(monitoringLoaded)setConnectionStatus('is-connected','TERHUBUNG DENGAN SERVER');
-      else setConnectionStatus('is-error','GAGAL MEMUAT DATA SERVER');
-      renderAll();
-    }
+    if(session)renderAll();
   }catch(err){setConnectionStatus('is-error','GAGAL TERHUBUNG KE SERVER');console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
   finally{refreshInFlight=false;if(showLoading)$('appView').classList.remove('is-loading')}
 }
