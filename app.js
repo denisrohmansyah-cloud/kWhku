@@ -296,12 +296,20 @@ function renderMonitoring(){
   $('monPowerFactor').textContent=latest?fmtPF(latest.powerFactor):'—';
   $('monEnergy').textContent=latest?fmtEnergy(latest.energyKwh)+' kWh':'— kWh';
   $('monPower').textContent='Daya '+(latest?fmtW(latest.powerW)+' W':'— W');
-  const visibleTemps=(monitoring.temperatures||[]).filter(r=>(admin()||r.customerId===session?.customerId)&&(!monitorStart||localDay(r.timestamp)>=monitorStart)&&(!monitorEnd||localDay(r.timestamp)<=monitorEnd)).slice().sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
-  const latestTemp=visibleTemps[0];
+  const allTemps=(monitoring.temperatures||[]).filter(r=>(admin()||r.customerId===session?.customerId)).slice().sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
+  // Kartu ringkasan selalu memakai pembacaan terbaru, tidak ikut terhapus oleh filter riwayat tanggal.
+  const latestTemp=allTemps[0];
+  const visibleTemps=allTemps.filter(r=>(!monitorStart||localDay(r.timestamp)>=monitorStart)&&(!monitorEnd||localDay(r.timestamp)<=monitorEnd));
   $('temperatureLatest').textContent=latestTemp?truncateDisplay(latestTemp.temperatureC,1)+' °C':'— °C';
   $('humidityLatest').textContent=latestTemp?truncateDisplay(latestTemp.humidityPct,1)+' %':'— %';
-  $('temperatureLastSeen').textContent=latestTemp?'Terakhir diterima '+timeLabel(latestTemp.receivedAt||latestTemp.timestamp):'Belum ada data DHT11';
-  $('temperatureReadings').innerHTML=visibleTemps.slice(0,Math.min(100,Number($('monitorLimit')?.value)||5)).map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+truncateDisplay(r.temperatureC,1)+' °C</b></td><td>'+truncateDisplay(r.humidityPct,1)+' %</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada data suhu dan kelembapan dari DHT11.</td></tr>';
+  const tempSeenAt=latestTemp?new Date(latestTemp.receivedAt||latestTemp.timestamp):null;
+  const tempAgeMs=tempSeenAt?Date.now()-tempSeenAt.getTime():Infinity;
+  const tempFresh=Number.isFinite(tempAgeMs)&&tempAgeMs>=-60000&&tempAgeMs<=180000;
+  $('temperatureLastSeen').textContent=latestTemp?(tempFresh?'Data DHT11 aktif · ':'Data DHT11 terlambat · ')+timeLabel(latestTemp.receivedAt||latestTemp.timestamp):'Belum ada data DHT11';
+  $('temperatureStatus').textContent=latestTemp?(tempFresh?'TERBARU':'KEDALUWARSA'):'MENUNGGU';
+  $('temperatureStatus').className='badge '+(latestTemp?(tempFresh?'':'amber'):'amber');
+  $('humidityLastSeen').textContent=latestTemp?'Satu pembacaan dengan suhu · '+esc(latestTemp.meterId):'Menunggu sensor DHT11';
+  $('temperatureReadings').innerHTML=visibleTemps.slice(0,Math.min(100,Number($('monitorLimit')?.value)||5)).map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+truncateDisplay(r.temperatureC,1)+' °C</b></td><td>'+truncateDisplay(r.humidityPct,1)+' %</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada data suhu dan kelembapan pada rentang tanggal ini.</td></tr>';
   $('monitorReadings').innerHTML=monitoringLoading?'<tr><td colspan="9" class="empty">Sedang memuat pembacaan sensor dari server…</td></tr>':readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmtW(r.powerW)+' W</td><td>'+fmtV(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmtHz(r.frequencyHz)+' Hz</td><td>'+fmtPF(r.powerFactor)+'</td></tr>').join('')||(monitoringError?'<tr><td colspan="9" class="empty">Data monitoring gagal dimuat. Periksa endpoint Google Apps Script dan deployment.</td></tr>':'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>');
   $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
