@@ -541,6 +541,7 @@ function doPost(e) {
     const parsedTimestamp=body.timestamp ? new Date(body.timestamp) : new Date();
     if (isNaN(parsedTimestamp.getTime())) return json_({ok:false,message:'Invalid timestamp'});
     const timestamp=parsedTimestamp;
+    let telegramTemperatureAlert = null;
     const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     const lock=LockService.getScriptLock();
     lock.waitLock(10000);
@@ -582,9 +583,15 @@ function doPost(e) {
           humidityPct !== null && humidityPct >= 0 && humidityPct <= 100) {
         const temperatureSheet = ensureTemperatureSheet_(ss);
         temperatureSheet.appendRow([timestamp,customerId,deviceId,temperatureC,humidityPct,receivedAt]);
+        telegramTemperatureAlert = {customerId,deviceId,temperatureC,humidityPct,receivedAt};
       }
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
     } finally { lock.releaseLock(); }
+    // Kirim notifikasi setelah lock spreadsheet dilepas agar tidak menahan proses penyimpanan.
+    if (telegramTemperatureAlert) {
+      try { evaluateTemperatureTelegramAlert_(telegramTemperatureAlert); }
+      catch (telegramError) { console.error('Telegram notification error:', telegramError); }
+    }
     return json_({ok:true,message:'Reading saved',customerId,timestamp:timestamp.toISOString(),receivedAt:new Date().toISOString()});
   } catch(err) {
     console.error('doPost error:', err);
@@ -799,6 +806,118 @@ function truthy_(v){return v===true||String(v).toLowerCase()==='true'||String(v)
 function safeEqual_(a,b){if(a.length!==b.length)return false;let out=0;for(let i=0;i<a.length;i++)out|=a.charCodeAt(i)^b.charCodeAt(i);return out===0;}
 function json_(obj){return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);}
 
+
+
+/* ===================== TELEGRAM NOTIFICATIONS =====================
+ * Simpan TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS di Script Properties.
+ * TELEGRAM_CHAT_IDS berisi satu atau beberapa chat ID dipisahkan koma.
+ * Notifikasi dikirim saat suhu melewati ambang maxTemperatureC dan saat pulih.
+ */
+function telegramProperties_() {
+  const p = PropertiesService.getScriptProperties();
+  return {
+    token: String(p.getProperty('TELEGRAM_BOT_TOKEN') || '').trim(),
+    chatIds: String(p.getProperty('TELEGRAM_CHAT_IDS') || '').split(',').map(x => x.trim()).filter(Boolean)
+  };
+}
+
+function telegramSend_(message) {
+  const cfg = telegramProperties_();
+  if (!cfg.token || !cfg.chatIds.length) {
+    console.warn('Telegram belum dikonfigurasi: isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS.');
+    return {ok:false,message:'Telegram belum dikonfigurasi.'};
+  }
+  const url = 'https://api.telegram.org/bot' + cfg.token + '/sendMessage';
+  const results = cfg.chatIds.map(chatId => {
+    const response = UrlFetchApp.fetch(url, {
+      method:'post',
+      contentType:'application/json',
+      payload:JSON.stringify({chat_id:chatId,text:message,disable_web_page_preview:true}),
+      muteHttpExceptions:true
+    });
+    const status = response.getResponseCode();
+    if (status < 200 || status >= 300) console.error('Telegram sendMessage gagal:',status,response.getContentText());
+    return {chatId,status};
+  });
+  return {ok:results.every(x=>x.status>=200&&x.status<300),results};
+}
+
+function evaluateTemperatureTelegramAlert_(reading) {
+  const cfg = alarmConfigFor_(reading.customerId);
+  const threshold = Number(cfg.maxTemperatureC);
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 50) return;
+  const cache = CacheService.getScriptCache();
+  const key = 'kwhku_temp_alert_' + String(reading.customerId).replace(/[^A-Za-z0-9_-]/g,'_');
+  const wasAlert = cache.get(key) === '1';
+  const isAlert = reading.temperatureC >= threshold;
+  const customer = getRows_('Pelanggan').find(x=>String(x.customerId)===String(reading.customerId));
+  const customerName = customer ? String(customer.name || customer.customerId) : String(reading.customerId);
+  const time = Utilities.formatDate(reading.receivedAt, Session.getScriptTimeZone() || 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
+  if (isAlert && !wasAlert) {
+    const result = telegramSend_(
+      '⚠️ PERINGATAN SUHU kWh-Ku\\n' +
+      'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\\n' +
+      'Perangkat: ' + reading.deviceId + '\\n' +
+      'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C\\n' +
+      'Ambang: ' + threshold.toFixed(1) + ' °C\\n' +
+      'Kelembapan: ' + reading.humidityPct.toFixed(1) + '%\\n' +
+      'Waktu: ' + time
+    );
+    if (result.ok) cache.put(key,'1',21600);
+  } else if (isAlert && wasAlert) {
+    // Pengingat berkala maksimal sekali setiap 30 menit selama kondisi tinggi.
+    const reminderKey = key + '_reminder';
+    if (!cache.get(reminderKey)) {
+      const result = telegramSend_(
+        '⏰ PENGINGAT SUHU MASIH TINGGI\\n' +
+        'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\\n' +
+        'Perangkat: ' + reading.deviceId + '\\n' +
+        'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C (ambang ' + threshold.toFixed(1) + ' °C)\\n' +
+        'Kelembapan: ' + reading.humidityPct.toFixed(1) + '%\\n' +
+        'Waktu: ' + time
+      );
+      if (result.ok) cache.put(reminderKey,'1',1800);
+    }
+  } else if (!isAlert && wasAlert && reading.temperatureC <= threshold - 1) {
+    const result = telegramSend_(
+      '✅ SUHU KEMBALI NORMAL kWh-Ku\\n' +
+      'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\\n' +
+      'Perangkat: ' + reading.deviceId + '\\n' +
+      'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C\\n' +
+      'Ambang peringatan: ' + threshold.toFixed(1) + ' °C\\n' +
+      'Waktu: ' + time
+    );
+    if (result.ok) {
+      cache.remove(key);
+      cache.remove(key + '_reminder');
+    }
+  }
+}
+
+// Jalankan sekali setelah mengisi TELEGRAM_BOT_TOKEN untuk melihat chat ID dari pesan /start.
+function getTelegramChatIds() {
+  const cfg = telegramProperties_();
+  if (!cfg.token) throw new Error('Isi TELEGRAM_BOT_TOKEN di Script Properties terlebih dahulu.');
+  const url = 'https://api.telegram.org/bot' + cfg.token + '/getUpdates';
+  const response = UrlFetchApp.fetch(url,{muteHttpExceptions:true});
+  const data = JSON.parse(response.getContentText() || '{}');
+  if (!data.ok) throw new Error('Telegram getUpdates gagal: ' + response.getContentText());
+  const chats = (data.result || []).map(u=>u.message && u.message.chat ? {
+    chatId:String(u.message.chat.id),
+    name:[u.message.chat.first_name,u.message.chat.last_name].filter(Boolean).join(' '),
+    username:u.message.chat.username || ''
+  } : null).filter(Boolean);
+  console.log(JSON.stringify(chats));
+  return chats;
+}
+
+// Jalankan dari editor untuk menguji token dan daftar chat ID.
+function testTelegramBot() {
+  const cfg = telegramProperties_();
+  if (!cfg.token) throw new Error('Isi TELEGRAM_BOT_TOKEN di Script Properties.');
+  if (!cfg.chatIds.length) throw new Error('Isi TELEGRAM_CHAT_IDS di Script Properties.');
+  return telegramSend_('✅ Bot notifikasi kWh-Ku berhasil terhubung.\nPengujian Telegram berhasil.');
+}
 
 const DEFAULT_ALARM_CONFIG_={buzzerEnabled:true,maxTemperatureC:30,maxCurrentA:4,reminderEnabled:true,reminderIntervalMinutes:60};
 function ensureAlarmConfigSheet_(){
