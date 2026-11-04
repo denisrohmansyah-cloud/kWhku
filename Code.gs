@@ -39,7 +39,7 @@ const SHEETS = {
   incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
   powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']],
   resetPeriods: ['Periode_Reset', ['customerId','resetAt','baselineEnergyKwh','createdAt']],
-  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct']],
+  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct','alarmEnabled']],
   temperature: ['Data_Suhu', ['timestamp','customerId','meterId','temperatureC','humidityPct','receivedAt']]
 };
 
@@ -922,7 +922,7 @@ function testTelegramBot() {
 }
 
 const DEFAULT_ALARM_CONFIG_ = {
-  buzzerEnabled:true, maxTemperatureC:30, maxCurrentA:4,
+  alarmEnabled:true, buzzerEnabled:true, maxTemperatureC:30, maxCurrentA:4,
   minVoltageV:198, maxVoltageV:231, maxPowerW:800,
   minFrequencyHz:49.5, maxFrequencyHz:50.5, minPowerFactor:0.85,
   minHumidityPct:40, maxHumidityPct:70,
@@ -948,7 +948,7 @@ function alarmConfigFor_(customerId){
   const cfg={};
   SHEETS.alarmConfig[1].forEach(k=>{if(k!=='customerId'&&k!=='updatedAt'&&k!=='updatedBy')cfg[k]=row[k]===''||row[k]===undefined?DEFAULT_ALARM_CONFIG_[k]:row[k];});
   ['maxTemperatureC','maxCurrentA','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct','reminderIntervalMinutes'].forEach(k=>cfg[k]=Number(cfg[k]));
-  cfg.buzzerEnabled=truthy_(cfg.buzzerEnabled);cfg.reminderEnabled=truthy_(cfg.reminderEnabled);
+  cfg.alarmEnabled=cfg.alarmEnabled===undefined?true:truthy_(cfg.alarmEnabled);cfg.buzzerEnabled=truthy_(cfg.buzzerEnabled);cfg.reminderEnabled=truthy_(cfg.reminderEnabled);
   cfg.updatedAt=row.updatedAt?new Date(row.updatedAt).toISOString():'';
   cfg.updatedBy=String(row.updatedBy||'');
   return cfg;
@@ -966,7 +966,7 @@ function saveAlarmConfig(session,config,targetId){
   const id=s.role==='ADMIN'?String(targetId||''):s.customerId;
   if(!id||!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan atau tidak aktif.'};
   const c=config||{},v={
-    buzzerEnabled:truthy_(c.buzzerEnabled),maxTemperatureC:Number(c.maxTemperatureC),maxCurrentA:Number(c.maxCurrentA),
+    alarmEnabled:c.alarmEnabled===undefined?true:truthy_(c.alarmEnabled),buzzerEnabled:truthy_(c.buzzerEnabled),maxTemperatureC:Number(c.maxTemperatureC),maxCurrentA:Number(c.maxCurrentA),
     minVoltageV:Number(c.minVoltageV),maxVoltageV:Number(c.maxVoltageV),maxPowerW:Number(c.maxPowerW),
     minFrequencyHz:Number(c.minFrequencyHz),maxFrequencyHz:Number(c.maxFrequencyHz),minPowerFactor:Number(c.minPowerFactor),
     minHumidityPct:Number(c.minHumidityPct),maxHumidityPct:Number(c.maxHumidityPct),
@@ -1119,7 +1119,9 @@ function sendTelegramSystemMonitor_(customer){
 
 function evaluateMultiParameterTelegramAlert_(r){
   if(!r || !r.customerId) return {ok:false,message:'Data alarm tidak lengkap.'};
-  const cfg=alarmConfigFor_(r.customerId),props=PropertiesService.getScriptProperties();
+  const cfg=alarmConfigFor_(r.customerId);
+  if(!cfg.alarmEnabled) return {ok:true,sent:false,disabled:true,message:'Alarm dinonaktifkan untuk pelanggan ini.'};
+  const props=PropertiesService.getScriptProperties();
   const customerKey=String(r.customerId).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,80);
   const stateKey='KWHKU_ALARM_STATE_'+customerKey,lock=LockService.getScriptLock();
   lock.waitLock(10000);
