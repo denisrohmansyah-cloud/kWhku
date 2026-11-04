@@ -255,3 +255,16 @@ input,select,textarea{max-width:100%;min-width:0}
 .toggle-switch input:checked+.toggle-slider:before{transform:translateX(22px)}
 .toggle-switch input:focus-visible+.toggle-slider{outline:3px solid #60a5fa;outline-offset:3px}
 @media(max-width:760px){.alarm-switch-grid{grid-template-columns:1fr}.alarm-switch-card{padding:15px}}
+
+/* Independent switches for each alarm threshold */
+.alarm-field-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.alarm-field-heading>label:first-child{margin:0}
+.mini-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.mini-toggle input{position:absolute;opacity:0;width:1px;height:1px}
+.mini-toggle-track{width:34px;height:19px;border-radius:20px;background:#aab4c2;position:relative;transition:.2s}
+.mini-toggle-track:before{content:"";position:absolute;width:13px;height:13px;top:3px;left:3px;background:#fff;border-radius:50%;transition:.2s}
+.mini-toggle input:checked+.mini-toggle-track{background:#16a36a}
+.mini-toggle input:checked+.mini-toggle-track:before{transform:translateX(15px)}
+.mini-toggle small{font-size:11px;color:var(--muted,#64748b);min-width:18px}
+.mini-toggle input:not(:checked)~small{color:#dc2626}
+.mini-toggle input:checked~small{color:#16a36a}
