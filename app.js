@@ -379,12 +379,22 @@ async function loadAlarmSettings(){
  if(admin())$('alarmCustomer').innerHTML=(r.customers||[]).map(c=>'<option value="'+esc(c.customerId)+'">'+esc(c.customerId+' — '+c.name)+'</option>').join('');
  $('alarmEnabled').checked=r.config.alarmEnabled!==false;$('alarmReminderEnabled').checked=!!r.config.reminderEnabled;
  const alarmFields={alarmMinVoltage:'minVoltageV',alarmMaxVoltage:'maxVoltageV',alarmMaxCurrent:'maxCurrentA',alarmMaxPower:'maxPowerW',alarmMinFrequency:'minFrequencyHz',alarmMaxFrequency:'maxFrequencyHz',alarmMinPowerFactor:'minPowerFactor',alarmMaxTemperature:'maxTemperatureC',alarmMinHumidity:'minHumidityPct',alarmMaxHumidity:'maxHumidityPct',alarmReminderInterval:'reminderIntervalMinutes'};
- Object.entries(alarmFields).forEach(([id,key])=>$(id).value=r.config[key]);
+  $('alarmVoltageMinEnabled').checked=r.config.alarmVoltageMinEnabled!==false;
+ $('alarmVoltageMaxEnabled').checked=r.config.alarmVoltageMaxEnabled!==false;
+ $('alarmCurrentMaxEnabled').checked=r.config.alarmCurrentMaxEnabled!==false;
+ $('alarmPowerMaxEnabled').checked=r.config.alarmPowerMaxEnabled!==false;
+ $('alarmFrequencyMinEnabled').checked=r.config.alarmFrequencyMinEnabled!==false;
+ $('alarmFrequencyMaxEnabled').checked=r.config.alarmFrequencyMaxEnabled!==false;
+ $('alarmPowerFactorMinEnabled').checked=r.config.alarmPowerFactorMinEnabled!==false;
+ $('alarmTemperatureMaxEnabled').checked=r.config.alarmTemperatureMaxEnabled!==false;
+ $('alarmHumidityMinEnabled').checked=r.config.alarmHumidityMinEnabled!==false;
+ $('alarmHumidityMaxEnabled').checked=r.config.alarmHumidityMaxEnabled!==false;
+Object.entries(alarmFields).forEach(([id,key])=>$(id).value=r.config[key]);
  $('alarmConfigStatus').textContent=r.config.updatedAt?'Terakhir disimpan '+new Date(r.config.updatedAt).toLocaleString('id-ID'):'Konfigurasi awal';
 }
 $('alarmCustomer')?.addEventListener('change',()=>loadAlarmSettings().catch(e=>toast(e.message)));
 $('alarmConfigForm')?.addEventListener('submit',async e=>{
  e.preventDefault();const b=$('saveAlarmConfig');b.disabled=true;b.textContent='Menyimpan…';
- const cfg={alarmEnabled:$('alarmEnabled').checked,buzzerEnabled:$('alarmBuzzerEnabled').checked,maxTemperatureC:Number($('alarmMaxTemperature').value),maxCurrentA:Number($('alarmMaxCurrent').value),maxPowerW:Number($('alarmMaxPower').value),minVoltageV:Number($('alarmMinVoltage').value),maxVoltageV:Number($('alarmMaxVoltage').value),minFrequencyHz:Number($('alarmMinFrequency').value),maxFrequencyHz:Number($('alarmMaxFrequency').value),minPowerFactor:Number($('alarmMinPowerFactor').value),minHumidityPct:Number($('alarmMinHumidity').value),maxHumidityPct:Number($('alarmMaxHumidity').value),reminderEnabled:$('alarmReminderEnabled').checked,reminderIntervalMinutes:Number($('alarmReminderInterval').value)};
+ const cfg={alarmEnabled:$('alarmEnabled').checked,alarmVoltageMinEnabled:$('alarmVoltageMinEnabled').checked,alarmVoltageMaxEnabled:$('alarmVoltageMaxEnabled').checked,alarmCurrentMaxEnabled:$('alarmCurrentMaxEnabled').checked,alarmPowerMaxEnabled:$('alarmPowerMaxEnabled').checked,alarmFrequencyMinEnabled:$('alarmFrequencyMinEnabled').checked,alarmFrequencyMaxEnabled:$('alarmFrequencyMaxEnabled').checked,alarmPowerFactorMinEnabled:$('alarmPowerFactorMinEnabled').checked,alarmTemperatureMaxEnabled:$('alarmTemperatureMaxEnabled').checked,alarmHumidityMinEnabled:$('alarmHumidityMinEnabled').checked,alarmHumidityMaxEnabled:$('alarmHumidityMaxEnabled').checked,buzzerEnabled:$('alarmBuzzerEnabled').checked,maxTemperatureC:Number($('alarmMaxTemperature').value),maxCurrentA:Number($('alarmMaxCurrent').value),maxPowerW:Number($('alarmMaxPower').value),minVoltageV:Number($('alarmMinVoltage').value),maxVoltageV:Number($('alarmMaxVoltage').value),minFrequencyHz:Number($('alarmMinFrequency').value),maxFrequencyHz:Number($('alarmMaxFrequency').value),minPowerFactor:Number($('alarmMinPowerFactor').value),minHumidityPct:Number($('alarmMinHumidity').value),maxHumidityPct:Number($('alarmMaxHumidity').value),reminderEnabled:$('alarmReminderEnabled').checked,reminderIntervalMinutes:Number($('alarmReminderInterval').value)};
  try{const r=await api('saveAlarmConfig',session,cfg,admin()?$('alarmCustomer').value:session.customerId);if(!r?.ok)throw Error(r?.message||'Gagal menyimpan');$('alarmConfigStatus').textContent='Tersimpan '+new Date().toLocaleString('id-ID')+'. ESP32 akan mengambil konfigurasi pada sinkronisasi berikutnya.';toast('Konfigurasi alarm tersimpan')}catch(err){toast(err.message||String(err))}finally{b.disabled=false;b.textContent='Simpan konfigurasi'}
 });
