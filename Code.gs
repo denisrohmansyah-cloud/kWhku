@@ -39,7 +39,7 @@ const SHEETS = {
   incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
   powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']],
   resetPeriods: ['Periode_Reset', ['customerId','resetAt','baselineEnergyKwh','createdAt']],
-  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct','alarmEnabled']],
+  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct','alarmEnabled','alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmCurrentMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmTemperatureMaxEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled']],
   temperature: ['Data_Suhu', ['timestamp','customerId','meterId','temperatureC','humidityPct','receivedAt']]
 };
 
@@ -922,7 +922,11 @@ function testTelegramBot() {
 }
 
 const DEFAULT_ALARM_CONFIG_ = {
-  alarmEnabled:true, buzzerEnabled:true, maxTemperatureC:30, maxCurrentA:4,
+  alarmEnabled:true, buzzerEnabled:true,
+  alarmVoltageMinEnabled:true,alarmVoltageMaxEnabled:true,alarmCurrentMaxEnabled:true,alarmPowerMaxEnabled:true,
+  alarmFrequencyMinEnabled:true,alarmFrequencyMaxEnabled:true,alarmPowerFactorMinEnabled:true,
+  alarmTemperatureMaxEnabled:true,alarmHumidityMinEnabled:true,alarmHumidityMaxEnabled:true,
+  maxTemperatureC:30, maxCurrentA:4,
   minVoltageV:198, maxVoltageV:231, maxPowerW:800,
   minFrequencyHz:49.5, maxFrequencyHz:50.5, minPowerFactor:0.85,
   minHumidityPct:40, maxHumidityPct:70,
@@ -966,7 +970,11 @@ function saveAlarmConfig(session,config,targetId){
   const id=s.role==='ADMIN'?String(targetId||''):s.customerId;
   if(!id||!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan atau tidak aktif.'};
   const c=config||{},v={
-    alarmEnabled:c.alarmEnabled===undefined?true:truthy_(c.alarmEnabled),buzzerEnabled:truthy_(c.buzzerEnabled),maxTemperatureC:Number(c.maxTemperatureC),maxCurrentA:Number(c.maxCurrentA),
+    alarmEnabled:c.alarmEnabled===undefined?true:truthy_(c.alarmEnabled),buzzerEnabled:truthy_(c.buzzerEnabled),
+    alarmVoltageMinEnabled:truthy_(c.alarmVoltageMinEnabled),alarmVoltageMaxEnabled:truthy_(c.alarmVoltageMaxEnabled),alarmCurrentMaxEnabled:truthy_(c.alarmCurrentMaxEnabled),alarmPowerMaxEnabled:truthy_(c.alarmPowerMaxEnabled),
+    alarmFrequencyMinEnabled:truthy_(c.alarmFrequencyMinEnabled),alarmFrequencyMaxEnabled:truthy_(c.alarmFrequencyMaxEnabled),alarmPowerFactorMinEnabled:truthy_(c.alarmPowerFactorMinEnabled),
+    alarmTemperatureMaxEnabled:truthy_(c.alarmTemperatureMaxEnabled),alarmHumidityMinEnabled:truthy_(c.alarmHumidityMinEnabled),alarmHumidityMaxEnabled:truthy_(c.alarmHumidityMaxEnabled),
+    maxTemperatureC:Number(c.maxTemperatureC),maxCurrentA:Number(c.maxCurrentA),
     minVoltageV:Number(c.minVoltageV),maxVoltageV:Number(c.maxVoltageV),maxPowerW:Number(c.maxPowerW),
     minFrequencyHz:Number(c.minFrequencyHz),maxFrequencyHz:Number(c.maxFrequencyHz),minPowerFactor:Number(c.minPowerFactor),
     minHumidityPct:Number(c.minHumidityPct),maxHumidityPct:Number(c.maxHumidityPct),
@@ -1135,19 +1143,20 @@ function evaluateMultiParameterTelegramAlert_(r){
     const name=customer?String(customer.name||customer.customerId):String(r.customerId);
     const time=Utilities.formatDate(r.receivedAt||new Date(),CONFIG.TIME_ZONE,'dd/MM/yyyy HH:mm:ss');
     const checks=[
-      ['voltage_low','Tegangan rendah',r.voltageV,'V','≥ '+cfg.minVoltageV+' V',v=>v<cfg.minVoltageV,v=>v>=cfg.minVoltageV+2],
-      ['voltage_high','Tegangan tinggi',r.voltageV,'V','≤ '+cfg.maxVoltageV+' V',v=>v>cfg.maxVoltageV,v=>v<=cfg.maxVoltageV-2],
-      ['current_high','Arus tinggi',r.currentA,'A','≤ '+cfg.maxCurrentA+' A',v=>v>cfg.maxCurrentA,v=>v<=cfg.maxCurrentA*.95],
-      ['power_high','Daya tinggi',r.powerW,'W','≤ '+cfg.maxPowerW+' W',v=>v>cfg.maxPowerW,v=>v<=cfg.maxPowerW*.95],
-      ['frequency_low','Frekuensi rendah',r.frequencyHz,'Hz','≥ '+cfg.minFrequencyHz+' Hz',v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1],
-      ['frequency_high','Frekuensi tinggi',r.frequencyHz,'Hz','≤ '+cfg.maxFrequencyHz+' Hz',v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1],
-      ['pf_low','Power factor rendah',r.powerFactor,'','≥ '+cfg.minPowerFactor,v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03],
-      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+cfg.maxTemperatureC+' °C',v=>v>=cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1],
-      ['humidity_low','Kelembapan rendah',r.humidityPct,'%','≥ '+cfg.minHumidityPct+'%',v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2],
-      ['humidity_high','Kelembapan tinggi',r.humidityPct,'%','≤ '+cfg.maxHumidityPct+'%',v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2]
+      ['voltage_low','Tegangan rendah',r.voltageV,'V','≥ '+cfg.minVoltageV+' V',v=>v<cfg.minVoltageV,v=>v>=cfg.minVoltageV+2,cfg.alarmVoltageMinEnabled],
+      ['voltage_high','Tegangan tinggi',r.voltageV,'V','≤ '+cfg.maxVoltageV+' V',v=>v>cfg.maxVoltageV,v=>v<=cfg.maxVoltageV-2,cfg.alarmVoltageMaxEnabled],
+      ['current_high','Arus tinggi',r.currentA,'A','≤ '+cfg.maxCurrentA+' A',v=>v>cfg.maxCurrentA,v=>v<=cfg.maxCurrentA*.95,cfg.alarmCurrentMaxEnabled],
+      ['power_high','Daya tinggi',r.powerW,'W','≤ '+cfg.maxPowerW+' W',v=>v>cfg.maxPowerW,v=>v<=cfg.maxPowerW*.95,cfg.alarmPowerMaxEnabled],
+      ['frequency_low','Frekuensi rendah',r.frequencyHz,'Hz','≥ '+cfg.minFrequencyHz+' Hz',v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1,cfg.alarmFrequencyMinEnabled],
+      ['frequency_high','Frekuensi tinggi',r.frequencyHz,'Hz','≤ '+cfg.maxFrequencyHz+' Hz',v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1,cfg.alarmFrequencyMaxEnabled],
+      ['pf_low','Power factor rendah',r.powerFactor,'','≥ '+cfg.minPowerFactor,v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03,cfg.alarmPowerFactorMinEnabled],
+      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+cfg.maxTemperatureC+' °C',v=>v>=cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1,cfg.alarmTemperatureMaxEnabled],
+      ['humidity_low','Kelembapan rendah',r.humidityPct,'%','≥ '+cfg.minHumidityPct+'%',v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2,cfg.alarmHumidityMinEnabled],
+      ['humidity_high','Kelembapan tinggi',r.humidityPct,'%','≤ '+cfg.maxHumidityPct+'%',v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2,cfg.alarmHumidityMaxEnabled]
     ];
     const newlyAbnormal=[],recovered=[];
     checks.forEach(ch=>{
+      if(!ch[7]){delete state.active[ch[0]];return;}
       const raw=ch[2];
       if(raw===null||raw===undefined||raw===''||!Number.isFinite(Number(raw))) return;
       const value=Number(raw),was=!!state.active[ch[0]],bad=ch[5](value);
