@@ -374,6 +374,26 @@ $('resetCalculationPeriod').onclick=async()=>{
 };
 $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan menghapus riwayat pembacaan dan rekap pemakaian akun Anda dari sistem. Tindakan ini tidak dapat dibatalkan. Lanjutkan?'))return;if(!confirm('Konfirmasi terakhir: hapus semua data pembacaan listrik milik akun Anda?'))return;try{const res=await api('resetCustomerData',session);if(!res?.ok)throw Error(res?.message||'Reset gagal');toast('Data pembacaan berhasil direset');await refresh()}catch(err){toast(err.message||String(err))}};
 
+function syncAlarmToggleUI(){
+ document.querySelectorAll('.mini-toggle').forEach(label=>{
+  const input=label.querySelector('input[type="checkbox"]'),state=label.querySelector('small'),field=label.closest('.alarm-threshold-field');
+  if(!input)return;if(state)state.textContent=input.checked?'ON':'OFF';
+  if(field)field.classList.toggle('is-disabled',!input.checked);
+ });
+ document.querySelectorAll('.alarm-switch-card').forEach(card=>{const input=card.querySelector('input[type="checkbox"]');if(input)card.classList.toggle('is-disabled',!input.checked);});
+}
+$('alarmVoltageMinEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmVoltageMaxEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmCurrentMaxEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmPowerMaxEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmFrequencyMinEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmFrequencyMaxEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmPowerFactorMinEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmTemperatureMaxEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmHumidityMinEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmHumidityMaxEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmEnabled')?.addEventListener('change',syncAlarmToggleUI);
+$('alarmReminderEnabled')?.addEventListener('change',syncAlarmToggleUI);
 async function loadAlarmSettings(){
  const r=await api('getAlarmConfig',session,admin()?$('alarmCustomer').value:undefined);if(!r?.ok)throw Error(r?.message||'Gagal memuat konfigurasi');
  if(admin())$('alarmCustomer').innerHTML=(r.customers||[]).map(c=>'<option value="'+esc(c.customerId)+'">'+esc(c.customerId+' — '+c.name)+'</option>').join('');
@@ -390,6 +410,7 @@ async function loadAlarmSettings(){
  $('alarmHumidityMinEnabled').checked=r.config.alarmHumidityMinEnabled!==false;
  $('alarmHumidityMaxEnabled').checked=r.config.alarmHumidityMaxEnabled!==false;
 Object.entries(alarmFields).forEach(([id,key])=>$(id).value=r.config[key]);
+ syncAlarmToggleUI();
  $('alarmConfigStatus').textContent=r.config.updatedAt?'Terakhir disimpan '+new Date(r.config.updatedAt).toLocaleString('id-ID'):'Konfigurasi awal';
 }
 $('alarmCustomer')?.addEventListener('change',()=>loadAlarmSettings().catch(e=>toast(e.message)));
