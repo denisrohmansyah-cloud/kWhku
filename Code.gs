@@ -1052,6 +1052,71 @@ function alarmHtml_(value) {
   return String(value===null||value===undefined?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+
+function setupTelegramSystemMonitor(){
+  const cfg=telegramProperties_();
+  if(!cfg.token||!cfg.chatIds.length) throw new Error('Telegram belum dikonfigurasi.');
+  const fn='sendTelegramSystemMonitorAll';
+  ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()===fn).forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger(fn).timeBased().everyMinutes(30).create();
+  return {ok:true,message:'Monitor dijadwalkan setiap 30 menit.'};
+}
+function sendTelegramSystemMonitorAll(){
+  const customers=getRows_('Pelanggan').filter(c=>truthy_(c.active));
+  const results=customers.map(c=>sendTelegramSystemMonitor_(c));
+  return {ok:results.every(x=>x.ok),results:results};
+}
+function sendTelegramSystemMonitor_(customer){
+  const id=String(customer.customerId);
+  const rows=getRows_('Data_Listrik').filter(x=>String(x.customerId)===id).sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
+  if(!rows.length)return {ok:false,message:'Belum ada data.'};
+  const r=rows[0],cfg=alarmConfigFor_(id),now=new Date(),received=new Date(r.receivedAt||r.timestamp);
+  const online=(now-received)<=CONFIG.MAX_AGE_MINUTES_ONLINE*60000;
+  const temps=getRows_('Data_Suhu').filter(x=>String(x.customerId)===id).sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
+  const t=temps[0]||null;
+  const checks=[['Tegangan',Number(r.voltageV),v=>v>=cfg.minVoltageV&&v<=cfg.maxVoltageV],['Arus',Number(r.currentA),v=>v<=cfg.maxCurrentA],['Daya',Number(r.powerW),v=>v<=cfg.maxPowerW],['Frekuensi',Number(r.frequencyHz),v=>v>=cfg.minFrequencyHz&&v<=cfg.maxFrequencyHz],['Power factor',Number(r.powerFactor),v=>v>=cfg.minPowerFactor]];
+  if(t){checks.push(['Suhu',Number(t.temperatureC),v=>v<cfg.maxTemperatureC]);checks.push(['Kelembapan',Number(t.humidityPct),v=>v>=cfg.minHumidityPct&&v<=cfg.maxHumidityPct]);}
+  const bad=checks.filter(x=>Number.isFinite(x[1])&&!x[2](x[1]));
+  const n=v=>Number(v).toFixed(2),tariff=Number(customer.tariffRpPerKwh||CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
+  const usage=dailyUsage_(rows,tariff,id),today=Utilities.formatDate(now,CONFIG.TIME_ZONE,'yyyy-MM-dd'),month=Utilities.formatDate(now,CONFIG.TIME_ZONE,'yyyy-MM');
+  const d=usage.find(x=>x.date===today),m=usage.filter(x=>x.date.slice(0,7)===month).reduce((s,x)=>s+x.costRp,0);
+  const msg=[
+    '<b>⚡ kWh-KU SYSTEM MONITOR</b>',
+    '<b>'+(bad.length?'⚠️ '+bad.length+' PARAMETER ABNORMAL':'✅ SEMUA PARAMETER NORMAL')+'</b>',
+    '━━━━━━━━━━━━━━━━━━━━',
+    '👤 <b>INFORMASI PELANGGAN</b>',
+    '┣ 🆔 ID: '+alarmHtml_(id),
+    '┗ 📟 Meter: '+alarmHtml_(customer.meterId||r.meterId),
+    '',
+    '📊 <b>ELECTRICAL PARAMETERS</b>',
+    '┣ 🔌 Tegangan: '+n(r.voltageV)+' V',
+    '┣ ⚡ Arus: '+n(r.currentA)+' A',
+    '┣ 🔋 Daya: '+n(r.powerW)+' W',
+    '┣ 📈 Energi: '+n(r.energyKwh)+' kWh',
+    '┣ 〰️ Frekuensi: '+n(r.frequencyHz)+' Hz',
+    '┗ 🎯 Power factor: '+n(r.powerFactor),
+    '',
+    '🌡️ <b>ENVIRONMENT MONITORING</b>',
+    t?'┣ 🌡️ Suhu: '+n(t.temperatureC)+' °C':'┣ ℹ️ Suhu: belum tersedia',
+    t?'┗ 💧 Kelembapan: '+n(t.humidityPct)+'%':'┗ ℹ️ Kelembapan: belum tersedia',
+    '',
+    '💰 <b>ELECTRICITY COST</b>',
+    '┣ 📅 Konsumsi hari ini: '+n(d?d.kwh:0)+' kWh',
+    '┣ 💵 Biaya hari ini: Rp'+Math.round(d?d.costRp:0).toLocaleString('id-ID'),
+    '┣ 📆 Biaya bulan ini: Rp'+Math.round(m).toLocaleString('id-ID'),
+    '┗ 🏷️ Tarif: Rp'+tariff.toLocaleString('id-ID')+'/kWh',
+    '',
+    '📡 <b>DEVICE STATUS</b>',
+    '┣ '+(online?'🟢':'🔴')+' ESP32: '+(online?'ONLINE':'OFFLINE'),
+    '┗ '+(online?'☁️':'⚠️')+' Cloud: '+(online?'CONNECTED':'NO RECENT DATA'),
+    '',
+    '━━━━━━━━━━━━━━━━━━━━',
+    '🕒 '+Utilities.formatDate(now,CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss'),
+    '<i>Estimasi biaya berdasarkan data energi yang tersimpan.</i>'
+  ].join('\n');
+  return telegramSend_(msg,'HTML');
+}
+
 function evaluateMultiParameterTelegramAlert_(r){
   if(!r || !r.customerId) return {ok:false,message:'Data alarm tidak lengkap.'};
   const cfg=alarmConfigFor_(r.customerId),props=PropertiesService.getScriptProperties();
