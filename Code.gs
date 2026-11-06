@@ -39,7 +39,7 @@ const SHEETS = {
   incidents: ['Log_Gangguan', ['timestamp','customerId','meterId','eventType','severity','message','resolvedAt']],
   powerRequests: ['Pengajuan_Daya', ['requestId','createdAt','customerId','currentPowerVa','requestedPowerVa','reason','status','reviewedAt','reviewedBy','tariffRpPerKwh']],
   resetPeriods: ['Periode_Reset', ['customerId','resetAt','baselineEnergyKwh','createdAt']],
-  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct','alarmEnabled','alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmCurrentMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmTemperatureMaxEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled']],
+  alarmConfig: ['Konfigurasi_Alarm', ['customerId','buzzerEnabled','maxTemperatureC','maxCurrentA','reminderEnabled','reminderIntervalMinutes','updatedAt','updatedBy','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct','alarmEnabled','alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmCurrentMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmTemperatureMaxEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled','alarmDeviceOfflineEnabled']],
   temperature: ['Data_Suhu', ['timestamp','customerId','meterId','temperatureC','humidityPct','receivedAt']]
 };
 
@@ -585,10 +585,13 @@ function doPost(e) {
         temperatureSheet.appendRow([timestamp,customerId,deviceId,temperatureC,humidityPct,receivedAt]);
         telegramReadingAlert = {customerId,deviceId,temperatureC,humidityPct,voltageV:voltage,currentA:current,powerW:power,frequencyHz:frequency,powerFactor:pf,receivedAt};
       }
+      const previousDeviceStatus=getRows_('deviceStatus').find(x=>String(x.customerId)===customerId&&String(x.meterId)===deviceId);
       updateDeviceStatus_(customerId, deviceId, 'ONLINE', receivedAt, 'Pembacaan ESP32 diterima.');
+      if(previousDeviceStatus&&String(previousDeviceStatus.status)==='OFFLINE') telegramReadingAlert={...(telegramReadingAlert||{}),deviceRecovered:true,customerId,deviceId,receivedAt};
     } finally { lock.releaseLock(); }
     // Kirim notifikasi setelah lock spreadsheet dilepas agar tidak menahan proses penyimpanan.
     try {
+      if(telegramReadingAlert&&telegramReadingAlert.deviceRecovered)sendTelegramDeviceRecovery_(customerId,deviceId,telegramReadingAlert.receivedAt);
       evaluateMultiParameterTelegramAlert_(telegramReadingAlert || {
         customerId,deviceId,voltageV:voltage,currentA:current,powerW:power,
         frequencyHz:frequency,powerFactor:pf,receivedAt:new Date()
@@ -922,7 +925,7 @@ function testTelegramBot() {
 }
 
 const DEFAULT_ALARM_CONFIG_ = {
-  alarmEnabled:true, buzzerEnabled:true,
+  alarmEnabled:true, alarmDeviceOfflineEnabled:true, buzzerEnabled:true,
   alarmVoltageMinEnabled:true,alarmVoltageMaxEnabled:true,alarmCurrentMaxEnabled:true,alarmPowerMaxEnabled:true,
   alarmFrequencyMinEnabled:true,alarmFrequencyMaxEnabled:true,alarmPowerFactorMinEnabled:true,
   alarmTemperatureMaxEnabled:true,alarmHumidityMinEnabled:true,alarmHumidityMaxEnabled:true,
@@ -952,7 +955,7 @@ function alarmConfigFor_(customerId){
   const cfg={};
   SHEETS.alarmConfig[1].forEach(k=>{if(k!=='customerId'&&k!=='updatedAt'&&k!=='updatedBy')cfg[k]=row[k]===''||row[k]===undefined?DEFAULT_ALARM_CONFIG_[k]:row[k];});
   ['maxTemperatureC','maxCurrentA','minVoltageV','maxVoltageV','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','minHumidityPct','maxHumidityPct','reminderIntervalMinutes'].forEach(k=>cfg[k]=Number(cfg[k]));
-  cfg.alarmEnabled=cfg.alarmEnabled===undefined?true:truthy_(cfg.alarmEnabled);cfg.buzzerEnabled=truthy_(cfg.buzzerEnabled);cfg.reminderEnabled=truthy_(cfg.reminderEnabled);
+  cfg.alarmEnabled=cfg.alarmEnabled===undefined?true:truthy_(cfg.alarmEnabled);cfg.alarmDeviceOfflineEnabled=cfg.alarmDeviceOfflineEnabled===undefined?true:truthy_(cfg.alarmDeviceOfflineEnabled);cfg.buzzerEnabled=truthy_(cfg.buzzerEnabled);cfg.reminderEnabled=truthy_(cfg.reminderEnabled);
   cfg.updatedAt=row.updatedAt?new Date(row.updatedAt).toISOString():'';
   cfg.updatedBy=String(row.updatedBy||'');
   return cfg;
@@ -970,7 +973,7 @@ function saveAlarmConfig(session,config,targetId){
   const id=s.role==='ADMIN'?String(targetId||''):s.customerId;
   if(!id||!getRows_('Pelanggan').some(c=>String(c.customerId)===id&&truthy_(c.active)))return {ok:false,message:'Pelanggan tidak ditemukan atau tidak aktif.'};
   const c=config||{},v={
-    alarmEnabled:c.alarmEnabled===undefined?true:truthy_(c.alarmEnabled),buzzerEnabled:truthy_(c.buzzerEnabled),
+    alarmEnabled:c.alarmEnabled===undefined?true:truthy_(c.alarmEnabled),alarmDeviceOfflineEnabled:c.alarmDeviceOfflineEnabled===undefined?true:truthy_(c.alarmDeviceOfflineEnabled),buzzerEnabled:truthy_(c.buzzerEnabled),
     alarmVoltageMinEnabled:truthy_(c.alarmVoltageMinEnabled),alarmVoltageMaxEnabled:truthy_(c.alarmVoltageMaxEnabled),alarmCurrentMaxEnabled:truthy_(c.alarmCurrentMaxEnabled),alarmPowerMaxEnabled:truthy_(c.alarmPowerMaxEnabled),
     alarmFrequencyMinEnabled:truthy_(c.alarmFrequencyMinEnabled),alarmFrequencyMaxEnabled:truthy_(c.alarmFrequencyMaxEnabled),alarmPowerFactorMinEnabled:truthy_(c.alarmPowerFactorMinEnabled),
     alarmTemperatureMaxEnabled:truthy_(c.alarmTemperatureMaxEnabled),alarmHumidityMinEnabled:truthy_(c.alarmHumidityMinEnabled),alarmHumidityMaxEnabled:truthy_(c.alarmHumidityMaxEnabled),
@@ -1069,6 +1072,43 @@ function setupTelegramSystemMonitor(){
   ScriptApp.newTrigger(fn).timeBased().everyMinutes(30).create();
   return {ok:true,message:'Monitor dijadwalkan setiap 30 menit.'};
 }
+
+function setupTelegramDeviceWatchdog(){
+  const cfg=telegramProperties_();
+  if(!cfg.token||!cfg.chatIds.length)throw new Error('Telegram belum dikonfigurasi.');
+  const fn='checkEsp32OfflineAll';
+  ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()===fn).forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger(fn).timeBased().everyMinutes(1).create();
+  return {ok:true,message:'ESP32 watchdog aktif; pemeriksaan setiap 1 menit, batas offline '+CONFIG.MAX_AGE_MINUTES_ONLINE+' menit.'};
+}
+function checkEsp32OfflineAll(){
+  const customers=getRows_('Pelanggan').filter(x=>truthy_(x.active)),statuses=getRows_('deviceStatus'),results=[];
+  customers.forEach(customer=>{
+    const id=String(customer.customerId),cfg=alarmConfigFor_(id);
+    if(!cfg.alarmEnabled||!cfg.alarmDeviceOfflineEnabled){results.push({customerId:id,skipped:true,reason:'Alarm perangkat OFF'});return;}
+    const rows=getRows_('Data_Listrik').filter(x=>String(x.customerId)===id)
+      .sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
+    if(!rows.length){results.push({customerId:id,skipped:true,reason:'Belum ada data awal'});return;}
+    const latest=rows[0],last=new Date(latest.receivedAt||latest.timestamp),age=Date.now()-last.getTime();
+    if(!Number.isFinite(last.getTime())||age<=CONFIG.MAX_AGE_MINUTES_ONLINE*60000){results.push({customerId:id,online:true});return;}
+    const meter=String(latest.meterId||customer.meterId||'-');
+    const status=statuses.find(x=>String(x.customerId)===id&&String(x.meterId)===meter);
+    if(status&&String(status.status)==='OFFLINE'){results.push({customerId:id,alreadyOffline:true});return;}
+    updateDeviceStatus_(id,meter,'OFFLINE',last,'Tidak ada data ESP32 melewati '+CONFIG.MAX_AGE_MINUTES_ONLINE+' menit.');
+    const minutes=Math.floor(age/60000),when=Utilities.formatDate(last,CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss');
+    const msg='<b>🚨 kWh-KU DEVICE ALERT</b>\n━━━━━━━━━━━━━━━━━━━━\n🔴 <b>STATUS: ESP32 OFFLINE</b>\n\n👤 <b>Pelanggan:</b> '+alarmHtml_(customer.name||id)+'\n🆔 <b>ID:</b> '+alarmHtml_(id)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(meter)+'\n\n⚠️ Tidak ada data diterima selama <b>'+minutes+' menit</b>.\n🕒 <b>Data terakhir:</b> '+when+'\n\n<b>Periksa:</b>\n• Catu daya ESP32\n• Koneksi Wi-Fi dan internet\n• Pengiriman ke Google Apps Script\n━━━━━━━━━━━━━━━━━━━━';
+    const sent=telegramSend_(msg,'HTML');results.push({customerId:id,offline:true,telegram:sent});
+  });
+  return {ok:results.every(x=>!x.telegram||x.telegram.ok),results:results};
+}
+function sendTelegramDeviceRecovery_(customerId,meterId,receivedAt){
+  const cfg=alarmConfigFor_(customerId);
+  if(!cfg.alarmEnabled||!cfg.alarmDeviceOfflineEnabled)return {ok:true,skipped:true};
+  const customer=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId));
+  const time=Utilities.formatDate(receivedAt||new Date(),CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss');
+  return telegramSend_('<b>✅ kWh-KU DEVICE RECOVERY</b>\n━━━━━━━━━━━━━━━━━━━━\n🟢 <b>STATUS: ESP32 ONLINE</b>\n\n👤 <b>Pelanggan:</b> '+alarmHtml_(customer&&customer.name||customerId)+'\n🆔 <b>ID:</b> '+alarmHtml_(customerId)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(meterId)+'\n\n📡 Data sensor kembali diterima oleh server.\n🕒 <b>Waktu pemulihan:</b> '+time+'\n━━━━━━━━━━━━━━━━━━━━','HTML');
+}
+
 function sendTelegramSystemMonitorAll(){
   const customers=getRows_('Pelanggan').filter(c=>truthy_(c.active));
   const results=customers.map(c=>sendTelegramSystemMonitor_(c));
