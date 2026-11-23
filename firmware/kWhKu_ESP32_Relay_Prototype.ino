@@ -89,7 +89,18 @@ uint32_t lastRelayPollMs = 0;
 uint32_t lastRelayStatusReportMs = 0;
 uint32_t lastWifiAttemptMs = 0;
 uint32_t lastLcdPageMs = 0;
+uint32_t lastDashboardSyncMs = 0;
 uint8_t lcdPage = 0;
+static const uint32_t DASHBOARD_SYNC_INTERVAL_MS = 30000;
+
+// Snapshot dari endpoint dashboard yang sama dengan web.
+bool dashboardDataValid = false;
+bool dashboardOnline = false;
+bool dashboardTemperatureValid = false;
+float dashboardVoltageV = NAN, dashboardCurrentA = NAN, dashboardPowerW = NAN;
+float dashboardPowerFactor = NAN, dashboardFrequencyHz = NAN;
+float dashboardEnergyMonthKwh = NAN, dashboardCostMonthRp = NAN;
+float dashboardTariffRpPerKwh = NAN, dashboardTemperatureC = NAN, dashboardHumidityPct = NAN;
 
 // ---------------- RELAY CONFIG FROM SERVER ----------------
 struct RelayConfig {
@@ -311,6 +322,66 @@ bool postJson(const String& payload, String& response) {
 
   Serial.println("[HTTP] Batas redirect 5 hop terlampaui.");
   return false;
+}
+
+bool fetchDashboardSnapshot() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+
+  DynamicJsonDocument request(384);
+  request["fn"] = "getLcdDashboard";
+  request["apiKey"] = DEVICE_API_KEY;
+  request["customerId"] = CUSTOMER_ID;
+  request["deviceId"] = DEVICE_ID;
+
+  String payload, response;
+  serializeJson(request, payload);
+  if (!postJson(payload, response)) {
+    Serial.println("[LCD-DASHBOARD] Sinkronisasi gagal; memakai snapshot terakhir.");
+    return false;
+  }
+
+  DynamicJsonDocument reply(3072);
+  const DeserializationError err = deserializeJson(reply, response);
+  if (err || !(reply["ok"] | false)) {
+    Serial.println("[LCD-DASHBOARD] Respons dashboard tidak valid.");
+    if (!err) Serial.println("[LCD-DASHBOARD] " + String((const char*)(reply["message"] | "unknown error")));
+    return false;
+  }
+
+  JsonObjectConst latest = reply["latest"].as<JsonObjectConst>();
+  if (latest.isNull()) {
+    Serial.println("[LCD-DASHBOARD] Belum ada pembacaan pada dashboard.");
+    dashboardDataValid = false;
+    return false;
+  }
+
+  dashboardVoltageV = latest["voltageV"] | NAN;
+  dashboardCurrentA = latest["currentA"] | NAN;
+  dashboardPowerW = latest["powerW"] | NAN;
+  dashboardPowerFactor = latest["powerFactor"] | NAN;
+  dashboardFrequencyHz = latest["frequencyHz"] | NAN;
+  dashboardEnergyMonthKwh = reply["energyMonthKwh"] | 0.0f;
+  dashboardCostMonthRp = reply["costMonthRp"] | 0.0f;
+  dashboardTariffRpPerKwh = reply["tariffRpPerKwh"] | 0.0f;
+  dashboardOnline = reply["online"] | false;
+
+  JsonObjectConst temp = reply["temperature"].as<JsonObjectConst>();
+  dashboardTemperatureValid = !temp.isNull();
+  if (dashboardTemperatureValid) {
+    dashboardTemperatureC = temp["temperatureC"] | NAN;
+    dashboardHumidityPct = temp["humidityPct"] | NAN;
+  }
+
+  dashboardDataValid = isFiniteValue(dashboardVoltageV) &&
+    isFiniteValue(dashboardCurrentA) && isFiniteValue(dashboardPowerW) &&
+    isFiniteValue(dashboardPowerFactor) && isFiniteValue(dashboardFrequencyHz) &&
+    isFiniteValue(dashboardEnergyMonthKwh) && isFiniteValue(dashboardCostMonthRp);
+  if (dashboardDataValid) {
+    Serial.printf("[LCD-DASHBOARD] Sync OK Ebulan=%.3f kWh Biaya=%.0f Tarif=%.0f Online=%s\n",
+      dashboardEnergyMonthKwh, dashboardCostMonthRp, dashboardTariffRpPerKwh,
+      dashboardOnline ? "YES" : "NO");
+  }
+  return dashboardDataValid;
 }
 
 String makeDeviceBaseJson(const char* action) {
@@ -702,51 +773,46 @@ String lcdStatusText() {
 
 void updateLcd() {
   lcd.clear();
+  if (!dashboardDataValid) {
+    printLcdLine(0, "Dashboard sync...");
+    printLcdLine(1, WiFi.status() == WL_CONNECTED ? "Menunggu data" : "Wi-Fi Offline");
+    return;
+  }
+
   switch (lcdPage) {
     case 0:
-      printLcdLine(0, electricalDataValid
-        ? "V:" + String(voltageV, 2) + " A:" + String(currentA, 2)
-        : "V:-- A:--");
-      printLcdLine(1, electricalDataValid
-        ? "P:" + String(powerW, 1) + "W PF:" + String(powerFactor, 2)
-        : "P:-- PF:--");
+      printLcdLine(0, "V:" + String(dashboardVoltageV, 1) + " A:" + String(dashboardCurrentA, 2));
+      printLcdLine(1, "P:" + String(dashboardPowerW, 1) + " PF:" + String(dashboardPowerFactor, 2));
       break;
 
     case 1:
-      printLcdLine(0, electricalDataValid
-        ? "Freq:" + String(frequencyHz, 2) + "Hz"
-        : "Freq:--");
-      printLcdLine(1, electricalDataValid
-        ? "E:" + String(energyKwh, 3) + " kWh"
-        : "E:-- kWh");
+      printLcdLine(0, "Energi:" + String(dashboardEnergyMonthKwh, 2) + "kWh");
+      printLcdLine(1, "Biaya:Rp" + String((unsigned long)(dashboardCostMonthRp + 0.5f)));
       break;
 
-    case 2: {
-      // Menggunakan konsumsi energi untuk periode tagihan, bukan counter kumulatif PZEM.
-      const float costRp = BILLING_PERIOD_ENERGY_KWH * DEFAULT_TARIFF_RP_PER_KWH;
-      printLcdLine(0, "Energi:" + String(BILLING_PERIOD_ENERGY_KWH, 2) + "kWh");
-      printLcdLine(1, "Biaya:Rp" + String((unsigned long)(costRp + 0.5f)));
+    case 2:
+      if (dashboardTemperatureValid) {
+        printLcdLine(0, "Suhu:" + String(dashboardTemperatureC, 1) + " C");
+        printLcdLine(1, "Kelembapan:" + String(dashboardHumidityPct, 0) + "%");
+      } else {
+        printLcdLine(0, "Suhu: --");
+        printLcdLine(1, "Kelembapan: --");
+      }
       break;
-    }
 
     case 3:
-      printLcdLine(0, temperatureDataValid
-        ? "Suhu:" + String(temperatureC, 2) + " C"
-        : "Suhu: --");
-      printLcdLine(1, temperatureDataValid
-        ? "Kelembapan:" + String(humidityPct, 2) + "%"
-        : "Kelembapan: --");
+      printLcdLine(0, WiFi.status() == WL_CONNECTED ? "Wi-Fi: Online" : "Wi-Fi: Offline");
+      printLcdLine(1, String("Dashboard:") + (dashboardOnline ? "Online" : "Offline"));
       break;
 
     case 4:
-      printLcdLine(0, WiFi.status() == WL_CONNECTED
-        ? "Wi-Fi: Online" : "Wi-Fi: Offline");
-      printLcdLine(1, "Status: " + lcdStatusText());
+      printLcdLine(0, "Mode: " + relayConfig.mode);
+      printLcdLine(1, "Relay: " + String(relayActualOn ? "ON" : "OFF"));
       break;
 
     default:
-      printLcdLine(0, "Mode: " + relayConfig.mode);
-      printLcdLine(1, "Relay: " + String(relayActualOn ? "ON" : "OFF"));
+      printLcdLine(0, "Tarif Rp/kWh");
+      printLcdLine(1, String((unsigned long)(dashboardTariffRpPerKwh + 0.5f)));
       break;
   }
   lcdPage = (lcdPage + 1) % 6;
@@ -801,6 +867,12 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED && now - lastRelayPollMs >= RELAY_POLL_INTERVAL_MS) {
     lastRelayPollMs = now;
     pollRelayServer();
+  }
+
+  if (WiFi.status() == WL_CONNECTED &&
+      (lastDashboardSyncMs == 0 || now - lastDashboardSyncMs >= DASHBOARD_SYNC_INTERVAL_MS)) {
+    lastDashboardSyncMs = now;
+    fetchDashboardSnapshot();
   }
 
   if (now - lastReadingUploadMs >= READING_UPLOAD_INTERVAL_MS) {
