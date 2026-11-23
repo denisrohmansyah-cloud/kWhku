@@ -265,6 +265,8 @@ void reportRelayStatusIfNeeded() {
   doc["relayAction"] = "status";
   doc["outputState"] = relayActualOn ? "ON" : "OFF";
   doc["detail"] = relayReason;
+  doc["decisionState"] = relayDecisionState;
+  doc["decisionReason"] = relayDecisionReason;
   String payload, response;
   serializeJson(doc, payload);
   if (postJson(payload, response)) { relayStatusNeedsReport = false; lastRelayStatusReportMs = millis(); }
@@ -279,6 +281,8 @@ void acknowledgeRelayCommand(const String& commandId, const String& detail) {
   doc["commandId"] = commandId;
   doc["outputState"] = relayActualOn ? "ON" : "OFF";
   doc["detail"] = detail;
+  doc["decisionState"] = relayDecisionState;
+  doc["decisionReason"] = relayDecisionReason;
   String payload, response;
   serializeJson(doc, payload);
   postJson(payload, response);
@@ -348,38 +352,40 @@ void processManualCommand(JsonObjectConst command) {
   }
   lastProcessedCommandId = id;
 
-  if (!ENABLE_LOW_VOLTAGE_RELAY_TEST) {
-    setRelayOutput(false, "ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY");
-    lastProcessedCommandDetail = "Output relay dikunci pada firmware; sinkronisasi status tetap aktif.";
-    acknowledgeRelayCommand(id, lastProcessedCommandDetail);
-    return;
-  }
-
   if (desired == "OFF") {
+    manualRequestedState = "OFF";
+    setRelayDecision("OFF", "WEBSITE_MANUAL_OFF_REQUEST");
     setRelayOutput(false, "WEBSITE_MANUAL_OFF");
-    lastProcessedCommandDetail = relayReason;
+    lastProcessedCommandDetail = "OFF diminta dari website; " + relayDecisionReason;
     acknowledgeRelayCommand(id, lastProcessedCommandDetail);
     return;
   }
 
   if (!relayConfigValid || !relayConfig.enabled || relayConfig.mode != "MANUAL" || mode != "MANUAL") {
+    manualRequestedState = "OFF";
+    setRelayDecision("OFF", "MANUAL_COMMAND_REJECTED");
     setRelayOutput(false, "MANUAL_COMMAND_REJECTED_SAFE_OFF");
-    lastProcessedCommandDetail = "Ditolak: relay tidak aktif atau mode bukan MANUAL.";
+    lastProcessedCommandDetail = "Ditolak: konfigurasi tidak aktif atau mode bukan MANUAL.";
     acknowledgeRelayCommand(id, lastProcessedCommandDetail);
     return;
   }
 
-  const bool dhtSelected = relayConfig.alarmTemperatureMaxEnabled ||
-    relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled;
-  if (desired != "ON" || !electricalDataValid || (dhtSelected && !temperatureDataValid)) {
-    setRelayOutput(false, "SENSOR_INVALID_OR_INVALID_COMMAND_SAFE_OFF");
-    lastProcessedCommandDetail = "Ditolak: perintah tidak valid atau data sensor tidak valid.";
+  manualRequestedState = "ON";
+  String alarmReason;
+  if (evaluateSelectedRelayAlarms(alarmReason)) {
+    setRelayDecision("OFF", "MANUAL_ON_BLOCKED:" + alarmReason);
+    setRelayOutput(false, "MANUAL_ON_BLOCKED");
+    lastProcessedCommandDetail = "ON ditolak oleh interlock data PZEM: " + alarmReason;
     acknowledgeRelayCommand(id, lastProcessedCommandDetail);
     return;
   }
 
+  setRelayDecision("ON", "MANUAL_ON_ALLOWED_BY_LATEST_PZEM");
   setRelayOutput(true, "WEBSITE_MANUAL_ON");
-  lastProcessedCommandDetail = relayReason;
+  lastProcessedCommandDetail = "ON diminta dari website; " + relayDecisionReason;
+  if (!ENABLE_LOW_VOLTAGE_RELAY_TEST) {
+    lastProcessedCommandDetail += "; output fisik dikunci untuk pengujian komunikasi.";
+  }
   acknowledgeRelayCommand(id, lastProcessedCommandDetail);
 }
 
