@@ -119,6 +119,7 @@ bool autoTripLatched = true; // Safe startup: AUTO must complete stable period b
 uint32_t normalSinceMs = 0;
 String relayReason = "BOOT_SAFE_OFF";
 String lastProcessedCommandId = "";
+String lastProcessedCommandDetail = "";
 bool relayStatusNeedsReport = true;
 
 // ---------------- UTILITIES ----------------
@@ -185,7 +186,13 @@ bool postJson(const String& payload, String& response) {
   if (statusCode > 0) response = http.getString();
   else Serial.printf("[HTTP] POST gagal: %s\n", http.errorToString(statusCode).c_str());
   http.end();
-  return statusCode >= 200 && statusCode < 300;
+  if (statusCode < 200 || statusCode >= 300) return false;
+  if (response.length()) {
+    DynamicJsonDocument responseDoc(2048);
+    if (deserializeJson(responseDoc, response) == DeserializationError::Ok &&
+        responseDoc.containsKey("ok") && !(responseDoc["ok"] | false)) return false;
+  }
+  return true;
 }
 
 String makeDeviceBaseJson(const char* action) {
@@ -317,18 +324,28 @@ void processManualCommand(JsonObjectConst command) {
   const String id = String((const char*)(command["commandId"] | ""));
   const String mode = String((const char*)(command["mode"] | ""));
   const String desired = String((const char*)(command["desiredState"] | ""));
-  if (!id.length() || id == lastProcessedCommandId) return;
+  if (!id.length()) return;
+
+  // Retry acknowledgements when the first HTTP response was lost.
+  if (id == lastProcessedCommandId) {
+    acknowledgeRelayCommand(id, lastProcessedCommandDetail);
+    return;
+  }
   lastProcessedCommandId = id;
 
   if (!relayConfigValid || !relayConfig.enabled || relayConfig.mode != "MANUAL" || mode != "MANUAL") {
     setRelayOutput(false, "MANUAL_COMMAND_REJECTED_SAFE_OFF");
-    acknowledgeRelayCommand(id, "Ditolak: relay tidak aktif atau mode bukan MANUAL.");
+    lastProcessedCommandDetail = "Ditolak: relay tidak aktif atau mode bukan MANUAL.";
+    acknowledgeRelayCommand(id, lastProcessedCommandDetail);
     return;
   }
 
-  if (!electricalDataValid || ((relayConfig.alarmTemperatureMaxEnabled || relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled) && !temperatureDataValid)) {
+  const bool dhtSelected = relayConfig.alarmTemperatureMaxEnabled ||
+    relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled;
+  if (!electricalDataValid || (dhtSelected && !temperatureDataValid)) {
     setRelayOutput(false, "SENSOR_INVALID_SAFE_OFF");
-    acknowledgeRelayCommand(id, "Ditolak: data sensor tidak valid.");
+    lastProcessedCommandDetail = "Ditolak: data sensor tidak valid.";
+    acknowledgeRelayCommand(id, lastProcessedCommandDetail);
     return;
   }
 
@@ -336,7 +353,8 @@ void processManualCommand(JsonObjectConst command) {
   else if (desired == "OFF") setRelayOutput(false, "WEBSITE_MANUAL_OFF");
   else setRelayOutput(false, "INVALID_COMMAND_SAFE_OFF");
 
-  acknowledgeRelayCommand(id, relayReason);
+  lastProcessedCommandDetail = relayReason;
+  acknowledgeRelayCommand(id, lastProcessedCommandDetail);
 }
 
 void pollRelayServer() {
