@@ -233,7 +233,7 @@ bool postJson(const String& payload, String& response) {
   HTTPClient http;
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
   http.setTimeout(HTTP_TIMEOUT_MS);
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
   http.setReuse(false);
 
   if (!http.begin(secureClient, APPS_SCRIPT_URL)) {
@@ -254,7 +254,12 @@ bool postJson(const String& payload, String& response) {
   http.end();
 
   if (statusCode < 200 || statusCode >= 300) {
-    if (response.length()) Serial.println("[HTTP] Body: " + response.substring(0, 240));
+    if (response.length()) {
+      String preview = response.substring(0, 180);
+      preview.replace("\n", " ");
+      preview.replace("\r", " ");
+      Serial.println("[HTTP] Body awal: " + preview);
+    }
     return false;
   }
   if (response.length()) {
