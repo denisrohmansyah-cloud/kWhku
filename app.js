@@ -347,7 +347,9 @@ $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...historyRows().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV diunduh')};
-setInterval(()=>{if(session){refresh().catch(()=>{});if($('page-alarmSettings')?.classList.contains('active'))loadRelayStatus().catch(()=>{})}},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
+setInterval(()=>{if(session)refresh().catch(()=>{})},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
+// Relay telemetry is reported by ESP32 every 5 seconds; refresh its panel independently.
+setInterval(()=>{if(session&&$('page-alarmSettings')?.classList.contains('active'))loadRelayStatus().catch(()=>{})},5000);
 
  
 // ---- Pengajuan penambahan daya
