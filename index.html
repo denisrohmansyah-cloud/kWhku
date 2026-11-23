@@ -116,7 +116,26 @@
       </div>
       <p class="sub monitoring-note">Status Offline berarti tidak ada pembacaan baru selama lebih dari 3 menit. Penyebab spesifik seperti listrik padam atau Wi-Fi terputus tidak dapat dipastikan hanya dari ketiadaan data.</p>
     </section>
-    <section id="page-alarmSettings" class="section"><div class="panel"><div class="panel-head"><div><h3>Konfigurasi alarm dan pengingat</h3><p>Atur ambang batas dan aktif/nonaktifkan notifikasi alarm sesuai kebutuhan.</p></div><span class="badge">Server</span></div><form id="alarmConfigForm" class="alarm-config-form"><div class="alarm-switch-grid">
+    <section id="page-alarmSettings" class="section">
+      <div class="panel relay-panel">
+       <div class="panel-head"><div><h3>Kontrol Relay CH1 — Prototipe Tegangan Rendah</h3><p>Untuk beban DC/tegangan rendah terisolasi saja; bukan pemutus instalasi listrik kamar.</p></div><span id="relayModeBadge" class="badge amber">SAFE OFF</span></div>
+       <div class="field admin-only hidden"><label for="relayCustomer">Pelanggan perangkat</label><select id="relayCustomer"></select></div>
+       <div class="relay-status-grid"><article class="relay-status-card"><small>Status aktual dari ESP32</small><strong id="relayActualState">UNKNOWN</strong></article><article class="relay-status-card"><small>Perintah terakhir</small><strong id="relayDesiredState">OFF</strong></article><article class="relay-status-card"><small>Status antrean</small><strong id="relayCommandStatus">NO_COMMAND</strong></article></div>
+       <div class="relay-config-grid admin-only hidden">
+        <label class="relay-check"><input id="relayEnabled" type="checkbox"><span><b>Aktifkan kendali relay</b><small>Jika dinonaktifkan, firmware menahan output CH1 OFF.</small></span></label>
+        <label class="field"><span>Mode operasi</span><select id="relayMode"><option value="MANUAL">Manual</option><option value="AUTO">Otomatis berdasarkan alarm</option></select></label>
+        <label class="relay-check"><input id="relayAlarmCurrent" type="checkbox"><span><b>Arus maksimum terlampaui</b><small>Hanya alarm ini yang memicu OFF bila dipilih.</small></span></label>
+        <label class="field"><span>Batas arus maksimum (A)</span><input id="relayMaxCurrent" type="number" min="0.01" max="1000" step="0.01" value="4"></label>
+        <label class="relay-check"><input id="relayAlarmTemperature" type="checkbox"><span><b>Suhu maksimum terlampaui</b><small>Hanya alarm ini yang memicu OFF bila dipilih.</small></span></label>
+        <label class="field"><span>Batas suhu maksimum (°C)</span><input id="relayMaxTemperature" type="number" min="0" max="50" step="0.1" value="30"></label>
+        <label class="relay-check"><input id="relayAutoRecover" type="checkbox" checked><span><b>Pemulihan otomatis</b><small>Relay kembali ON setelah pembacaan normal stabil.</small></span></label>
+        <label class="field"><span>Waktu kondisi stabil (detik)</span><input id="relayStableSeconds" type="number" min="10" max="600" step="5" value="60"></label>
+       </div>
+       <div class="relay-actions admin-only hidden"><button class="primary" id="saveRelayConfig" type="button">Simpan konfigurasi relay</button><label class="field"><span>Perintah manual CH1</span><select id="relayManualState"><option value="OFF">OFF</option><option value="ON">ON</option></select></label><button class="secondary" id="relaySendCommand" type="button">Kirim perintah manual</button></div>
+       <p id="relayReason" class="sub">Belum ada laporan perangkat.</p><p id="relayConfigStatus" class="sub">Konfigurasi relay belum dimuat.</p>
+       <p class="relay-safety-note">Mode otomatis hanya untuk prototipe tegangan rendah. Sensor tidak valid, perangkat baru menyala, atau konfigurasi belum diterima akan membuat relay tetap OFF. Tetap gunakan proteksi listrik independen.</p>
+      </div>
+<div class="panel"><div class="panel-head"><div><h3>Konfigurasi alarm dan pengingat</h3><p>Atur ambang batas dan aktif/nonaktifkan notifikasi alarm sesuai kebutuhan.</p></div><span class="badge">Server</span></div><form id="alarmConfigForm" class="alarm-config-form"><div class="alarm-switch-grid">
 <div class="alarm-switch-card"><div><strong>Aktifkan sistem alarm</strong><small>ON: evaluasi ambang dan kirim peringatan Telegram. OFF: hentikan seluruh notifikasi alarm.</small></div><label class="toggle-switch" for="alarmEnabled"><input id="alarmEnabled" type="checkbox" checked><span class="toggle-slider"></span></label></div>
 <div class="alarm-switch-card"><div><strong>Deteksi ESP32 Offline</strong><small>ON: kirim peringatan saat perangkat tidak mengirim data lebih dari 3 menit, dan notifikasi pemulihan saat tersambung kembali.</small></div><label class="toggle-switch" for="alarmDeviceOfflineEnabled"><input id="alarmDeviceOfflineEnabled" type="checkbox" checked><span class="toggle-slider"></span></label></div>
 <div class="alarm-switch-card"><div><strong>Aktifkan pengingat berkala</strong><small>Kirim pengingat ulang selama kondisi masih abnormal.</small></div><label class="toggle-switch" for="alarmReminderEnabled"><input id="alarmReminderEnabled" type="checkbox" checked><span class="toggle-slider"></span></label></div>
