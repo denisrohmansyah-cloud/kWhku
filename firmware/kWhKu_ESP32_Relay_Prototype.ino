@@ -29,6 +29,7 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
 #include <PZEM004Tv30.h>
@@ -40,7 +41,7 @@
 // ---------------- USER CONFIGURATION ----------------
 static const char* WIFI_SSID = "YOUR_WIFI_SSID";
 static const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-static const char* APPS_SCRIPT_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec";
+static const char* APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIegsiM_A3M4EtqOHTnHDCPv8pI4GR36mihZWrn5VL0qJaEr_94VPySe-LPxZzHgCzig/exec";
 static const char* DEVICE_API_KEY = "YOUR_DEVICE_API_KEY";
 static const char* CUSTOMER_ID = "PLG-001";
 static const char* DEVICE_ID = "ESP32-001";
@@ -208,26 +209,62 @@ void connectWiFiNonBlocking() {
 }
 
 bool postJson(const String& payload, String& response) {
-  if (WiFi.status() != WL_CONNECTED) return false;
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[HTTP] Dilewati: Wi-Fi belum terhubung.");
+    return false;
+  }
+  if (String(DEVICE_API_KEY).startsWith("YOUR_") ||
+      String(DEVICE_API_KEY).startsWith("REPLACE_")) {
+    Serial.println("[HTTP] DEVICE_API_KEY belum diisi. Samakan dengan Script Property DEVICE_API_KEY.");
+    return false;
+  }
+  if (String(APPS_SCRIPT_URL).indexOf("YOUR_DEPLOYMENT_ID") >= 0) {
+    Serial.println("[HTTP] APPS_SCRIPT_URL masih placeholder.");
+    return false;
+  }
+
+  WiFiClientSecure secureClient;
+  // Google Apps Script memakai HTTPS dan redirect ke host Google lain.
+  // setInsecure dipakai agar koneksi tidak gagal karena CA bundle belum dipasang.
+  // Gunakan hanya pada jaringan tepercaya; validasi sertifikat dapat ditambahkan kemudian.
+  secureClient.setInsecure();
+  secureClient.setTimeout(HTTP_TIMEOUT_MS / 1000);
+
   HTTPClient http;
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setReuse(false);
 
-  if (!http.begin(APPS_SCRIPT_URL)) {
-    Serial.println("[HTTP] URL tidak dapat dibuka.");
+  if (!http.begin(secureClient, APPS_SCRIPT_URL)) {
+    Serial.println("[HTTP] Gagal membuka URL Apps Script. Periksa URL dan TLS.");
     return false;
   }
 
   http.addHeader("Content-Type", "application/json");
+  http.addHeader("Connection", "close");
   const int statusCode = http.POST(payload);
-  if (statusCode > 0) response = http.getString();
-  else Serial.printf("[HTTP] POST gagal: %s\n", http.errorToString(statusCode).c_str());
+  if (statusCode > 0) {
+    response = http.getString();
+    Serial.printf("[HTTP] Respons server: %d\n", statusCode);
+  } else {
+    Serial.printf("[HTTP] POST gagal (%d): %s\n",
+      statusCode, http.errorToString(statusCode).c_str());
+  }
   http.end();
-  if (statusCode < 200 || statusCode >= 300) return false;
+
+  if (statusCode < 200 || statusCode >= 300) {
+    if (response.length()) Serial.println("[HTTP] Body: " + response.substring(0, 240));
+    return false;
+  }
   if (response.length()) {
     DynamicJsonDocument responseDoc(2048);
     if (deserializeJson(responseDoc, response) == DeserializationError::Ok &&
-        responseDoc.containsKey("ok") && !(responseDoc["ok"] | false)) return false;
+        responseDoc.containsKey("ok") && !(responseDoc["ok"] | false)) {
+      Serial.println("[HTTP] API menolak permintaan: " +
+        String((const char*)(responseDoc["message"] | "unknown error")));
+      return false;
+    }
   }
   return true;
 }
