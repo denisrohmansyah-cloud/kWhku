@@ -138,7 +138,7 @@
         <label class="relay-check"><input id="relayAutoRecover" type="checkbox" checked><span><b>Pemulihan otomatis</b><small>Relay kembali ON setelah semua alarm terpilih normal stabil.</small></span></label>
         <label class="field"><span>Waktu kondisi stabil (detik)</span><input id="relayStableSeconds" type="number" min="10" max="600" step="5" value="60"></label>
        </div>
-       <div class="relay-actions admin-only hidden"><button class="primary" id="saveRelayConfig" type="button">Simpan konfigurasi relay</button><label class="field"><span>Perintah manual CH1</span><select id="relayManualState"><option value="OFF">OFF</option><option value="ON">ON</option></select></label><button class="secondary" id="relaySendCommand" type="button">Kirim perintah manual</button></div>
+       <div class="relay-actions admin-only hidden"><button class="primary" id="saveRelayConfig" type="button">Simpan konfigurasi relay</button><label class="field"><span>Permintaan manual CH1</span><select id="relayManualState"><option value="OFF">OFF</option><option value="ON">ON</option></select></label><button class="secondary" id="relaySendCommand" type="button">Kirim permintaan manual</button></div>
        <p id="relayReason" class="sub">Belum ada laporan perangkat.</p><p id="relayConfigStatus" class="sub">Konfigurasi relay belum dimuat.</p>
        <p class="relay-safety-note">Ambang dibaca dari Pengaturan Alarm, tetapi pemicunya dipilih terpisah di sini. Status yang ditampilkan adalah output GPIO25 yang dilaporkan ESP32, bukan pengukuran kontak mekanis relay. Firmware saat ini mengunci aktuasi output untuk pengujian komunikasi dan status.</p>
       </div>
