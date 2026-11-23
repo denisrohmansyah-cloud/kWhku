@@ -692,20 +692,69 @@ function relayConfigFor_(customerId){
  if(!row){const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.config[0]);const headers=RELAY_SHEETS_.config[1];const values=headers.map(k=>k==='customerId'?customerId:k==='enabled'?false:k==='mode'?'MANUAL':k==='autoRecover'?true:k==='recoverStableSeconds'?60:k==='maxCurrentA'?alarm.maxCurrentA:k==='maxTemperatureC'?alarm.maxTemperatureC:k==='updatedAt'?new Date():k==='updatedBy'?'SYSTEM_DEFAULT':false);sh.appendRow(values);}
  return cfg;
 }
-function saveRelayConfig_(session,payload,targetId){
- const u=validateSession_(session);if(!u.ok)return u;if(u.role!=='ADMIN')return{ok:false,message:'Akses administrator diperlukan untuk konfigurasi relay.'};
- const id=String(targetId||'').trim(),customer=getRows_('Pelanggan').find(x=>String(x.customerId)===id&&truthy_(x.active));if(!customer)return{ok:false,message:'Pelanggan tidak ditemukan.'};
- const p=payload||{},v={enabled:truthy_(p.enabled),mode:String(p.mode||'MANUAL'),autoRecover:truthy_(p.autoRecover),recoverStableSeconds:Number(p.recoverStableSeconds)};
- RELAY_ALARM_FLAG_KEYS_.forEach(k=>v[k]=truthy_(p[k]));
- if(!['MANUAL','AUTO'].includes(v.mode)||!Number.isInteger(v.recoverStableSeconds)||v.recoverStableSeconds<10||v.recoverStableSeconds>600)return{ok:false,message:'Pengaturan relay tidak valid.'};
- if(v.mode==='AUTO'&&!RELAY_ALARM_FLAG_KEYS_.some(k=>v[k]))return{ok:false,message:'Pilih minimal satu alarm pemicu sebelum mengaktifkan mode otomatis.'};
- const alarm=alarmConfigFor_(id);v.maxCurrentA=alarm.maxCurrentA;v.maxTemperatureC=alarm.maxTemperatureC;
- ensureRelaySheets_();const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.config[0]),rows=relayRows_('config'),i=rows.findIndex(x=>String(x.customerId)===id),now=new Date();
- const values=RELAY_SHEETS_.config[1].map(k=>k==='customerId'?id:k==='enabled'?v.enabled:k==='mode'?v.mode:k==='autoRecover'?v.autoRecover:k==='recoverStableSeconds'?v.recoverStableSeconds:k==='maxCurrentA'?v.maxCurrentA:k==='maxTemperatureC'?v.maxTemperatureC:k==='updatedAt'?now:k==='updatedBy'?u.username: v[k]===undefined?false:v[k]);
- if(i<0)sh.appendRow(values);else sh.getRange(i+2,1,1,values.length).setValues([values]);
- relayLog_(id,customer.meterId,'CONFIG_UPDATED',v.mode,'Konfigurasi relay diperbarui','WEBSITE','');
- return{ok:true,config:v,message:'Konfigurasi relay tersimpan.'};
+function saveRelayConfig_(session,payload,targetId) {
+  const user = validateSession_(session);
+  if (!user.ok) return user;
+
+  const id = user.role === 'ADMIN'
+    ? String(targetId || '').trim()
+    : String(user.customerId || '').trim();
+  if (!id) return {ok:false,message:'ID pelanggan tidak tersedia.'};
+
+  const customer = getRows_('Pelanggan').find(x =>
+    String(x.customerId) === id && truthy_(x.active));
+  if (!customer) return {ok:false,message:'Pelanggan tidak ditemukan atau tidak aktif.'};
+
+  const p = payload || {};
+  const mode = String(p.mode || 'MANUAL').toUpperCase();
+  const recoverStableSeconds = Number(p.recoverStableSeconds);
+  if (!['MANUAL','AUTO'].includes(mode) ||
+      !Number.isInteger(recoverStableSeconds) ||
+      recoverStableSeconds < 10 || recoverStableSeconds > 600) {
+    return {ok:false,message:'Mode atau waktu stabil relay tidak valid.'};
+  }
+
+  const config = {
+    enabled:truthy_(p.enabled),
+    mode:mode,
+    autoRecover:p.autoRecover === undefined ? true : truthy_(p.autoRecover),
+    recoverStableSeconds:recoverStableSeconds
+  };
+  RELAY_ALARM_FLAG_KEYS_.forEach(k => config[k] = truthy_(p[k]));
+  if (mode === 'AUTO' && !RELAY_ALARM_FLAG_KEYS_.some(k => config[k])) {
+    return {ok:false,message:'Mode otomatis memerlukan minimal satu parameter alarm aktif.'};
+  }
+
+  const alarm = alarmConfigFor_(id);
+  config.maxCurrentA = Number(alarm.maxCurrentA);
+  config.maxTemperatureC = Number(alarm.maxTemperatureC);
+
+  ensureRelaySheets_();
+  const sh = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID)
+    .getSheetByName(RELAY_SHEETS_.config[0]);
+  const rows = relayRows_('config');
+  const index = rows.findIndex(x => String(x.customerId) === id);
+  const now = new Date();
+  const values = RELAY_SHEETS_.config[1].map(k =>
+    k === 'customerId' ? id :
+    k === 'enabled' ? config.enabled :
+    k === 'mode' ? config.mode :
+    k === 'autoRecover' ? config.autoRecover :
+    k === 'recoverStableSeconds' ? config.recoverStableSeconds :
+    k === 'maxCurrentA' ? config.maxCurrentA :
+    k === 'maxTemperatureC' ? config.maxTemperatureC :
+    k === 'updatedAt' ? now :
+    k === 'updatedBy' ? user.username :
+    config[k] === undefined ? false : config[k]
+  );
+  if (index < 0) sh.appendRow(values);
+  else sh.getRange(index + 2, 1, 1, values.length).setValues([values]);
+
+  relayLog_(id, customer.meterId, 'CONFIG_UPDATED', mode,
+    'Konfigurasi relay diperbarui', 'WEBSITE', user.username);
+  return {ok:true,config:config,message:'Konfigurasi relay tersimpan. Menunggu ESP32 mengambil konfigurasi.'};
 }
+
 function getRelayStatus(session,targetId){
  const u=validateSession_(session);if(!u.ok)return u;
  const customers=getRows_('Pelanggan').filter(c=>truthy_(c.active));
@@ -728,7 +777,46 @@ function getRelayStatus(session,targetId){
    updatedAt:cmd&&cmd.ackAt?new Date(cmd.ackAt).toISOString():cmd&&cmd.createdAt?new Date(cmd.createdAt).toISOString():''};
  })};
 }
-function setRelayCommand_(session,mode,state,targetId){const s=validateSession_(session);if(!s.ok)return s;if(s.role!=='ADMIN')return{ok:false,message:'Kontrol relay prototipe hanya tersedia untuk administrator.'};const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(targetId||'')&&truthy_(x.active));if(!c)return{ok:false,message:'Pelanggan tidak ditemukan.'};if(mode!=='MANUAL'||!['ON','OFF'].includes(state))return{ok:false,message:'Perintah manual hanya dapat dikirim dalam mode MANUAL.'};const rc=relayConfigFor_(c.customerId);if(!rc.enabled)return{ok:false,message:'Aktifkan kendali relay terlebih dahulu.'};if(rc.mode!=='MANUAL')return{ok:false,message:'Ubah mode relay menjadi MANUAL terlebih dahulu.'};ensureRelaySheets_();const id='RLY-'+Utilities.getUuid(),now=new Date(),lock=LockService.getScriptLock();lock.waitLock(10000);try{SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]).appendRow([id,c.customerId,c.meterId,mode,state,mode==='MANUAL'?'Perintah manual website':'Perintah mode otomatis website',now,s.username,'PENDING','','','']);relayLog_(c.customerId,c.meterId,'COMMAND_QUEUED',state,'Perintah website '+mode,'WEBSITE',id);return{ok:true,commandId:id,status:'PENDING',message:'Perintah masuk antrean; menunggu konfirmasi ESP32.'}}finally{lock.releaseLock()}}
+function setRelayCommand_(session,mode,state,targetId) {
+  const user = validateSession_(session);
+  if (!user.ok) return user;
+
+  const id = user.role === 'ADMIN'
+    ? String(targetId || '').trim()
+    : String(user.customerId || '').trim();
+  const customer = getRows_('Pelanggan').find(x =>
+    String(x.customerId) === id && truthy_(x.active));
+  if (!customer) return {ok:false,message:'Pelanggan tidak ditemukan atau tidak aktif.'};
+
+  const requestedMode = String(mode || '').toUpperCase();
+  const requestedState = String(state || '').toUpperCase();
+  if (requestedMode !== 'MANUAL' || !['ON','OFF'].includes(requestedState)) {
+    return {ok:false,message:'Perintah manual hanya menerima ON/OFF dalam mode MANUAL.'};
+  }
+
+  const relayConfig = relayConfigFor_(id);
+  if (!relayConfig.enabled) return {ok:false,message:'Aktifkan kendali relay terlebih dahulu.'};
+  if (relayConfig.mode !== 'MANUAL') return {ok:false,message:'Pilih mode MANUAL sebelum mengirim perintah ON/OFF.'};
+
+  ensureRelaySheets_();
+  const commandId = 'RLY-' + Utilities.getUuid();
+  const now = new Date();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID)
+      .getSheetByName(RELAY_SHEETS_.commands[0]);
+    sh.appendRow([commandId,id,customer.meterId,'MANUAL',requestedState,
+      'Perintah manual dari dashboard',now,user.username,'PENDING','','','']);
+    relayLog_(id,customer.meterId,'COMMAND_QUEUED',requestedState,
+      'Perintah manual dashboard','WEBSITE',commandId);
+    return {ok:true,commandId:commandId,status:'PENDING',
+      message:'Perintah masuk antrean. Menunggu ESP32 mengambil dan mengonfirmasi perintah.'};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function relayDeviceApi_(body){if(!safeEqual_(String(body.apiKey||''),CONFIG.DEVICE_API_KEY)||CONFIG.DEVICE_API_KEY.indexOf('REPLACE_')===0)return{ok:false,message:'Unauthorized device'};const c=String(body.customerId||''),m=String(body.deviceId||''),customer=getRows_('Pelanggan').find(x=>String(x.customerId)===c&&String(x.meterId)===m&&truthy_(x.active));if(!customer)return{ok:false,message:'Unknown device/customer'};ensureRelaySheets_();if(body.relayAction==='poll'){
  const x=latestRelayCommand_(c,m),age=x?Date.now()-new Date(x.createdAt).getTime():0;
  if(x&&String(x.status)==='PENDING'&&age>120000){
