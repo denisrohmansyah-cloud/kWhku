@@ -118,6 +118,9 @@ struct RelayConfig {
 RelayConfig relayConfig;
 bool relayConfigValid = false;
 bool relayActualOn = false;
+String relayDecisionState = "UNKNOWN";
+String relayDecisionReason = "MENUNGGU_DATA_PZEM";
+String manualRequestedState = "OFF";
 bool autoTripLatched = true; // Safe startup: AUTO must complete stable period before ON
 uint32_t normalSinceMs = 0;
 String relayReason = "BOOT_SAFE_OFF";
@@ -410,34 +413,19 @@ void pollRelayServer() {
 }
 
 // ---------------- LOCAL AUTOMATIC ALARM CONTROL ----------------
-void evaluateAutomaticRelay() {
-  if (!ENABLE_LOW_VOLTAGE_RELAY_TEST) {
-    setRelayOutput(false, "ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY");
-    return;
-  }
-  if (!relayConfigValid || !relayConfig.enabled) {
-    setRelayOutput(false, "RELAY_DISABLED");
-    return;
-  }
-  if (relayConfig.mode != "AUTO") return;
-
+bool evaluateSelectedRelayAlarms(String &reason) {
+  reason = "";
   const bool dhtSelected = relayConfig.alarmTemperatureMaxEnabled ||
     relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled;
   if (!electricalDataValid || (dhtSelected && !temperatureDataValid)) {
-    autoTripLatched = true;
-    normalSinceMs = 0;
-    setRelayOutput(false, "SENSOR_INVALID_SAFE_OFF");
-    return;
+    reason = "SENSOR_INVALID";
+    return true; // Treat missing measurements as a blocking condition.
   }
 
-  bool alarmActive = false;
-  String reason = "";
   auto addReason = [&](const char* label) {
     if (reason.length()) reason += "+";
     reason += label;
-    alarmActive = true;
   };
-
   if (relayConfig.alarmVoltageMinEnabled && voltageV < relayConfig.minVoltageV) addReason("VOLTAGE_LOW");
   if (relayConfig.alarmVoltageMaxEnabled && voltageV > relayConfig.maxVoltageV) addReason("VOLTAGE_HIGH");
   if (relayConfig.alarmCurrentMaxEnabled && currentA > relayConfig.maxCurrentA) addReason("CURRENT_HIGH");
@@ -448,27 +436,83 @@ void evaluateAutomaticRelay() {
   if (relayConfig.alarmTemperatureMaxEnabled && temperatureC > relayConfig.maxTemperatureC) addReason("TEMPERATURE_HIGH");
   if (relayConfig.alarmHumidityMinEnabled && humidityPct < relayConfig.minHumidityPct) addReason("HUMIDITY_LOW");
   if (relayConfig.alarmHumidityMaxEnabled && humidityPct > relayConfig.maxHumidityPct) addReason("HUMIDITY_HIGH");
+  return reason.length() > 0;
+}
 
-  if (alarmActive) {
-    autoTripLatched = true;
-    normalSinceMs = 0;
-    setRelayOutput(false, reason);
+void setRelayDecision(const String& state, const String& reason) {
+  if (relayDecisionState != state || relayDecisionReason != reason) {
+    relayDecisionState = state;
+    relayDecisionReason = reason;
+    relayStatusNeedsReport = true;
+    Serial.printf("[RELAY DECISION] %s | %s\n", state.c_str(), reason.c_str());
+  }
+}
+
+void evaluateAutomaticRelay() {
+  if (!relayConfigValid) {
+    setRelayDecision("UNKNOWN", "RELAY_CONFIG_NOT_RECEIVED");
+    setRelayOutput(false, "RELAY_CONFIG_NOT_RECEIVED");
+    return;
+  }
+  if (!relayConfig.enabled) {
+    setRelayDecision("OFF", "RELAY_CONTROL_DISABLED");
+    setRelayOutput(false, "RELAY_DISABLED");
     return;
   }
 
-  // The full selected alarm set must remain normal continuously before recovery.
+  String alarmReason;
+  const bool blockingAlarm = evaluateSelectedRelayAlarms(alarmReason);
+
+  if (relayConfig.mode == "MANUAL") {
+    if (manualRequestedState != "ON") {
+      setRelayDecision("OFF", "MANUAL_OFF_REQUESTED");
+      setRelayOutput(false, "MANUAL_OFF_REQUESTED");
+      return;
+    }
+    if (blockingAlarm) {
+      setRelayDecision("OFF", "MANUAL_ON_BLOCKED:" + alarmReason);
+      setRelayOutput(false, "MANUAL_ON_BLOCKED");
+      return;
+    }
+    setRelayDecision("ON", "MANUAL_ON_ALLOWED_BY_LATEST_PZEM");
+    setRelayOutput(true, "MANUAL_ON_REQUESTED");
+    return;
+  }
+
+  if (relayConfig.mode != "AUTO") {
+    setRelayDecision("UNKNOWN", "INVALID_RELAY_MODE");
+    setRelayOutput(false, "INVALID_RELAY_MODE");
+    return;
+  }
+
+  if (blockingAlarm) {
+    autoTripLatched = true;
+    normalSinceMs = 0;
+    setRelayDecision("OFF", "AUTO_ALARM:" + alarmReason);
+    setRelayOutput(false, "AUTO_ALARM");
+    return;
+  }
+
   if (normalSinceMs == 0) normalSinceMs = millis();
   const uint32_t stableMs = (uint32_t)relayConfig.recoverStableSeconds * 1000UL;
   const bool stable = (millis() - normalSinceMs) >= stableMs;
 
   if (autoTripLatched) {
-    if (relayConfig.autoRecover && stable) {
-      setRelayOutput(true, "AUTO_RECOVERY_AFTER_STABLE");
-      autoTripLatched = false;
+    if (!relayConfig.autoRecover) {
+      setRelayDecision("OFF", "AUTO_NORMAL_MANUAL_RESET_REQUIRED");
+      setRelayOutput(false, "AUTO_MANUAL_RESET_REQUIRED");
+      return;
     }
-  } else if (!relayActualOn && stable) {
-    setRelayOutput(true, "AUTO_NORMAL_STABLE");
+    if (!stable) {
+      setRelayDecision("WAIT", "AUTO_WAITING_FOR_STABLE_NORMAL_DATA");
+      setRelayOutput(false, "AUTO_WAITING_STABLE");
+      return;
+    }
+    autoTripLatched = false;
   }
+
+  setRelayDecision("ON", "AUTO_NORMAL_STABLE");
+  setRelayOutput(true, "AUTO_NORMAL_STABLE");
 }
 
 // ---------------- CLOUD READING UPLOAD ----------------
