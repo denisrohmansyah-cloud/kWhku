@@ -118,7 +118,7 @@ void setRelayOutput(bool on, const String& reason) {
   // Any invalid configuration or disabled relay always forces output OFF.
   if (!relayConfigValid || !relayConfig.enabled) on = false;
 
-  const bool changed = (relayActualOn != on);
+  const bool changed = (relayActualOn != on) || (relayReason != reason);
   relayActualOn = on;
   relayReason = reason;
 
