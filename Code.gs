@@ -606,22 +606,23 @@ function doPost(e) {
 }
 
 
-const RELAY_SHEETS_={commands:['Perintah_Relay',['commandId','customerId','meterId','mode','desiredState','reason','createdAt','createdBy','status','ackAt','actualState','detail']],events:['Log_Relay',['timestamp','customerId','meterId','event','state','reason','source','detail']],status:['Status_Relay',['customerId','meterId','outputState','reason','lastReportedAt','decisionState','decisionReason']],config:['Konfigurasi_Relay',['customerId','enabled','mode','alarmCurrentMaxEnabled','alarmTemperatureMaxEnabled','maxCurrentA','maxTemperatureC','autoRecover','recoverStableSeconds','updatedAt','updatedBy','alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled']]};
+const RELAY_SHEETS_={commands:['Perintah_Relay',['commandId','customerId','meterId','mode','desiredState','reason','createdAt','createdBy','status','ackAt','actualState','detail']],events:['Log_Relay',['timestamp','customerId','meterId','event','state','reason','source','detail']],status:['Status_Relay',['customerId','meterId','outputState','reason','lastReportedAt','decisionState','decisionReason','voltageV','currentA','powerW','energyKwh','frequencyHz','powerFactor','temperatureC','humidityPct']],config:['Konfigurasi_Relay',['customerId','enabled','mode','alarmCurrentMaxEnabled','alarmTemperatureMaxEnabled','maxCurrentA','maxTemperatureC','autoRecover','recoverStableSeconds','updatedAt','updatedBy','alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled']]};
 function ensureRelaySheets_(){const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);Object.keys(RELAY_SHEETS_).forEach(k=>{const[n,h]=RELAY_SHEETS_[k];let sh=ss.getSheetByName(n);if(!sh){sh=ss.insertSheet(n);sh.getRange(1,1,1,h.length).setValues([h]);sh.setFrozenRows(1)}else{const ex=sh.getRange(1,1,1,Math.max(1,sh.getLastColumn())).getValues()[0].map(String);h.forEach(x=>{if(!ex.includes(x))sh.getRange(1,sh.getLastColumn()+1).setValue(x)})}})}
 function relayRows_(k){const[n,h]=RELAY_SHEETS_[k],sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(n);if(!sh||sh.getLastRow()<2)return[];return sh.getRange(2,1,sh.getLastRow()-1,h.length).getValues().map(r=>Object.fromEntries(h.map((x,i)=>[x,r[i]])))}
 function relayLog_(c,m,e,s,r,source,d){SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.events[0]).appendRow([new Date(),c,m,e,s,r,source,d||''])}
 
-function upsertRelayStatus_(customerId,meterId,state,reason,decisionState,decisionReason){
+function upsertRelayStatus_(customerId,meterId,state,reason,decisionState,decisionReason,measurements){
  const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.status[0]);
  const rows=relayRows_('status'),i=rows.findIndex(r=>String(r.customerId)===String(customerId)&&String(r.meterId)===String(meterId));
- const now=new Date(),prev=i>=0?rows[i]:null;
- const values=[customerId,meterId,state,reason||'',now,decisionState||'UNKNOWN',decisionReason||''];
+ const now=new Date(),prev=i>=0?rows[i]:null,m=measurements||{};
+ const keys=['voltageV','currentA','powerW','energyKwh','frequencyHz','powerFactor','temperatureC','humidityPct'];
+ const vals=keys.map(k=>{const n=measurementNumber_(m[k]);return n===null?'':n});
+ const values=[customerId,meterId,state,reason||'',now,decisionState||'UNKNOWN',decisionReason||'',...vals];
  if(i<0)sh.appendRow(values);else sh.getRange(i+2,1,1,values.length).setValues([values]);
  if(!prev||String(prev.outputState)!==String(state)||String(prev.reason)!==String(reason||'')||String(prev.decisionState)!==String(decisionState||'UNKNOWN')||String(prev.decisionReason)!==String(decisionReason||'')){
   relayLog_(customerId,meterId,'STATE_CHANGE',state,reason||'Perubahan output GPIO','ESP32','Keputusan: '+(decisionState||'UNKNOWN')+' — '+(decisionReason||''));
  }
 }
-
 function latestRelayCommand_(c,m){return relayRows_('commands').filter(r=>String(r.customerId)===String(c)&&String(r.meterId)===String(m)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null}
 const RELAY_ALARM_FLAG_KEYS_=['alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmCurrentMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmTemperatureMaxEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled'];
 function relayConfigFor_(customerId){
@@ -661,6 +662,10 @@ function getRelayStatus(session,targetId){
   const fresh=reported>0&&(now-reported)<=90000;
   return{customerId:c.customerId,meterId:c.meterId,mode:cfg.mode,enabled:cfg.enabled,relayConfig:cfg,desiredState:cmd?String(cmd.desiredState):'OFF',commandStatus:cmd?String(cmd.status):'NO_COMMAND',
    outputState:fresh?String(st.outputState):st?'STALE':'UNKNOWN',reason:st?String(st.reason||''):'Belum ada laporan perangkat',decisionState:st?String(st.decisionState||'UNKNOWN'):'UNKNOWN',decisionReason:st?String(st.decisionReason||'Belum ada evaluasi PZEM'):'Belum ada evaluasi PZEM',
+   voltageV:st&&measurementNumber_(st.voltageV)!==null?Number(st.voltageV):null,currentA:st&&measurementNumber_(st.currentA)!==null?Number(st.currentA):null,
+   powerW:st&&measurementNumber_(st.powerW)!==null?Number(st.powerW):null,energyKwh:st&&measurementNumber_(st.energyKwh)!==null?Number(st.energyKwh):null,
+   frequencyHz:st&&measurementNumber_(st.frequencyHz)!==null?Number(st.frequencyHz):null,powerFactor:st&&measurementNumber_(st.powerFactor)!==null?Number(st.powerFactor):null,
+   temperatureC:st&&measurementNumber_(st.temperatureC)!==null?Number(st.temperatureC):null,humidityPct:st&&measurementNumber_(st.humidityPct)!==null?Number(st.humidityPct):null,
    reportedAt:reported?new Date(reported).toISOString():'',statusAgeSeconds:reported?Math.max(0,Math.floor((now-reported)/1000)):null,
    updatedAt:cmd&&cmd.ackAt?new Date(cmd.ackAt).toISOString():cmd&&cmd.createdAt?new Date(cmd.createdAt).toISOString():''};
  })};
@@ -675,7 +680,7 @@ function relayDeviceApi_(body){if(!safeEqual_(String(body.apiKey||''),CONFIG.DEV
  }
  const fresh=x&&String(x.status)==='PENDING'&&age<=120000;
  return{ok:true,command:fresh?{commandId:String(x.commandId),mode:String(x.mode),desiredState:String(x.desiredState),status:String(x.status)}:null,relayConfig:relayConfigFor_(c)};
-}if(body.relayAction==='ack'){const id=String(body.commandId||''),state=['ON','OFF'].includes(String(body.actualState))?String(body.actualState):'UNKNOWN',rows=relayRows_('commands'),i=rows.findIndex(x=>String(x.commandId)===id&&String(x.customerId)===c&&String(x.meterId)===m);if(i<0)return{ok:false,message:'Command tidak ditemukan.'};if(String(rows[i].status)==='ACKNOWLEDGED')return{ok:true,alreadyAcknowledged:true};const now=new Date(),sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);sh.getRange(i+2,9,1,4).setValues([['ACKNOWLEDGED',now,state,String(body.detail||'').slice(0,180)]]);upsertRelayStatus_(c,m,state,String(body.detail||'Perintah dikonfirmasi ESP32'),String(body.decisionState||'UNKNOWN'),String(body.decisionReason||'').slice(0,180));relayLog_(c,m,'COMMAND_ACK',state,'Konfirmasi ESP32','ESP32',id);return{ok:true}}if(body.relayAction==='status'){const state=['ON','OFF'].includes(String(body.outputState||body.actualState))?String(body.outputState||body.actualState):'UNKNOWN';upsertRelayStatus_(c,m,state,String(body.detail||'').slice(0,180),String(body.decisionState||'UNKNOWN'),String(body.decisionReason||'').slice(0,180));return{ok:true,receivedAt:new Date().toISOString()}}return{ok:false,message:'Aksi relay tidak dikenal.'}}
+}if(body.relayAction==='ack'){const id=String(body.commandId||''),state=['ON','OFF'].includes(String(body.actualState))?String(body.actualState):'UNKNOWN',rows=relayRows_('commands'),i=rows.findIndex(x=>String(x.commandId)===id&&String(x.customerId)===c&&String(x.meterId)===m);if(i<0)return{ok:false,message:'Command tidak ditemukan.'};if(String(rows[i].status)==='ACKNOWLEDGED')return{ok:true,alreadyAcknowledged:true};const now=new Date(),sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);sh.getRange(i+2,9,1,4).setValues([['ACKNOWLEDGED',now,state,String(body.detail||'').slice(0,180)]]);upsertRelayStatus_(c,m,state,String(body.detail||'Perintah dikonfirmasi ESP32'),String(body.decisionState||'UNKNOWN'),String(body.decisionReason||'').slice(0,180),body);relayLog_(c,m,'COMMAND_ACK',state,'Konfirmasi ESP32','ESP32',id);return{ok:true}}if(body.relayAction==='status'){const state=['ON','OFF'].includes(String(body.outputState||body.actualState))?String(body.outputState||body.actualState):'UNKNOWN';upsertRelayStatus_(c,m,state,String(body.detail||'').slice(0,180),String(body.decisionState||'UNKNOWN'),String(body.decisionReason||'').slice(0,180),body);return{ok:true,receivedAt:new Date().toISOString()}}return{ok:false,message:'Aksi relay tidak dikenal.'}}
 
 function hashPin_(pin) {
   const props=PropertiesService.getScriptProperties();
