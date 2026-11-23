@@ -659,7 +659,7 @@ function getRelayStatus(session,targetId){
   const cmd=commands.filter(x=>String(x.customerId)===String(c.customerId)&&String(x.meterId)===String(c.meterId)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null;
   const st=statuses.find(x=>String(x.customerId)===String(c.customerId)&&String(x.meterId)===String(c.meterId))||null;
   const cfg=relayConfigFor_(c.customerId),reported=st&&st.lastReportedAt?new Date(st.lastReportedAt).getTime():0;
-  const fresh=reported>0&&(now-reported)<=90000;
+  const fresh=reported>0&&(now-reported)<=15000;
   return{customerId:c.customerId,meterId:c.meterId,mode:cfg.mode,enabled:cfg.enabled,relayConfig:cfg,desiredState:cmd?String(cmd.desiredState):'OFF',commandStatus:cmd?String(cmd.status):'NO_COMMAND',
    outputState:fresh?String(st.outputState):st?'STALE':'UNKNOWN',reason:st?String(st.reason||''):'Belum ada laporan perangkat',
    decisionState:fresh?String(st.decisionState||'UNKNOWN'):st?'STALE':'UNKNOWN',
