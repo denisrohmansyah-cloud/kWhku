@@ -228,7 +228,7 @@ bool postJson(const String& payload, String& response) {
   // setInsecure dipakai agar koneksi tidak gagal karena CA bundle belum dipasang.
   // Gunakan hanya pada jaringan tepercaya; validasi sertifikat dapat ditambahkan kemudian.
   secureClient.setInsecure();
-  secureClient.setTimeout(HTTP_TIMEOUT_MS / 1000);
+  secureClient.setTimeout(HTTP_TIMEOUT_MS);
 
   HTTPClient http;
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
