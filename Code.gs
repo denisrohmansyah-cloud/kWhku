@@ -518,6 +518,7 @@ function doPost(e) {
     assertConfigured_();
     const body=JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (body.fn === 'getDeviceConfig') return json_(getDeviceAlarmConfig_(body));
+    if (body.relayAction) return json_(relayDeviceApi_(body));
     if (body.fn) return json_(handleApi_(body)); // permintaan dari website
 
     // API perangkat ESP32 (shared key hanya untuk perangkat, bukan browser).
@@ -603,6 +604,16 @@ function doPost(e) {
     return json_({ok:false,message:'Permintaan gagal diproses. Periksa konfigurasi dan log Apps Script.'});
   }
 }
+
+
+const RELAY_SHEETS_={commands:['Perintah_Relay',['commandId','customerId','meterId','mode','desiredState','reason','createdAt','createdBy','status','ackAt','actualState','detail']],events:['Log_Relay',['timestamp','customerId','meterId','event','state','reason','source','detail']]};
+function ensureRelaySheets_(){const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);Object.keys(RELAY_SHEETS_).forEach(k=>{const[n,h]=RELAY_SHEETS_[k];let sh=ss.getSheetByName(n);if(!sh){sh=ss.insertSheet(n);sh.getRange(1,1,1,h.length).setValues([h]);sh.setFrozenRows(1)}else{const ex=sh.getRange(1,1,1,Math.max(1,sh.getLastColumn())).getValues()[0].map(String);h.forEach(x=>{if(!ex.includes(x))sh.getRange(1,sh.getLastColumn()+1).setValue(x)})}})}
+function relayRows_(k){const[n,h]=RELAY_SHEETS_[k],sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(n);if(!sh||sh.getLastRow()<2)return[];return sh.getRange(2,1,sh.getLastRow()-1,h.length).getValues().map(r=>Object.fromEntries(h.map((x,i)=>[x,r[i]])))}
+function relayLog_(c,m,e,s,r,source,d){SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.events[0]).appendRow([new Date(),c,m,e,s,r,source,d||''])}
+function latestRelayCommand_(c,m){return relayRows_('commands').filter(r=>String(r.customerId)===String(c)&&String(r.meterId)===String(m)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null}
+function getRelayStatus(session,targetId){const s=validateSession_(session);if(!s.ok)return s;const cs=getRows_('Pelanggan').filter(c=>truthy_(c.active));const selected=s.role==='ADMIN'?cs.filter(c=>!targetId||String(c.customerId)===String(targetId)):cs.filter(c=>String(c.customerId)===s.customerId);ensureRelaySheets_();return{ok:true,rows:selected.map(c=>{const x=latestRelayCommand_(c.customerId,c.meterId);return{customerId:c.customerId,meterId:c.meterId,mode:x?String(x.mode):'SAFE_OFF',desiredState:x?String(x.desiredState):'OFF',commandStatus:x?String(x.status):'NO_COMMAND',actualState:x&&x.actualState?String(x.actualState):'UNKNOWN',reason:x?String(x.reason||''):'Belum ada perintah',updatedAt:x&&x.ackAt?new Date(x.ackAt).toISOString():x&&x.createdAt?new Date(x.createdAt).toISOString():''}})}}
+function setRelayCommand_(session,mode,state,targetId){const s=validateSession_(session);if(!s.ok)return s;if(s.role!=='ADMIN')return{ok:false,message:'Kontrol relay prototipe hanya tersedia untuk administrator.'};const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(targetId||'')&&truthy_(x.active));if(!c)return{ok:false,message:'Pelanggan tidak ditemukan.'};if(!['MANUAL','AUTO'].includes(mode)||!['ON','OFF'].includes(state))return{ok:false,message:'Perintah tidak valid.'};ensureRelaySheets_();const id='RLY-'+Utilities.getUuid(),now=new Date(),lock=LockService.getScriptLock();lock.waitLock(10000);try{SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]).appendRow([id,c.customerId,c.meterId,mode,state,mode==='MANUAL'?'Perintah manual website':'Perintah mode otomatis website',now,s.username,'PENDING','','','']);relayLog_(c.customerId,c.meterId,'COMMAND_QUEUED',state,'Perintah website '+mode,'WEBSITE',id);return{ok:true,commandId:id,status:'PENDING',message:'Perintah masuk antrean; menunggu konfirmasi ESP32.'}}finally{lock.releaseLock()}}
+function relayDeviceApi_(body){if(!safeEqual_(String(body.apiKey||''),CONFIG.DEVICE_API_KEY)||CONFIG.DEVICE_API_KEY.indexOf('REPLACE_')===0)return{ok:false,message:'Unauthorized device'};const c=String(body.customerId||''),m=String(body.deviceId||''),customer=getRows_('Pelanggan').find(x=>String(x.customerId)===c&&String(x.meterId)===m&&truthy_(x.active));if(!customer)return{ok:false,message:'Unknown device/customer'};ensureRelaySheets_();if(body.relayAction==='poll'){const x=latestRelayCommand_(c,m);return{ok:true,command:x?{commandId:String(x.commandId),mode:String(x.mode),desiredState:String(x.desiredState),status:String(x.status)}:null}}if(body.relayAction==='ack'){const id=String(body.commandId||''),state=['ON','OFF'].includes(String(body.actualState))?String(body.actualState):'UNKNOWN',rows=relayRows_('commands'),i=rows.findIndex(x=>String(x.commandId)===id&&String(x.customerId)===c&&String(x.meterId)===m);if(i<0)return{ok:false,message:'Command tidak ditemukan.'};const now=new Date(),sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);sh.getRange(i+2,9,1,4).setValues([['ACKNOWLEDGED',now,state,String(body.detail||'').slice(0,180)]]);relayLog_(c,m,'COMMAND_ACK',state,'Konfirmasi ESP32','ESP32',id);return{ok:true}}if(body.relayAction==='status'){const state=['ON','OFF'].includes(String(body.actualState))?String(body.actualState):'UNKNOWN';relayLog_(c,m,'STATE_REPORT',state,'Laporan status','ESP32',String(body.detail||'').slice(0,180));return{ok:true}}return{ok:false,message:'Aksi relay tidak dikenal.'}}
 
 function hashPin_(pin) {
   const props=PropertiesService.getScriptProperties();
@@ -1008,6 +1019,8 @@ function handleApi_(body){
       case 'getDashboard': return getDashboard(a[0]);
       case 'getMonitoring': return getMonitoring(a[0],a[1]);
       case 'getAlarmConfig': return getAlarmConfig(a[0],a[1]);
+      case 'getRelayStatus': return getRelayStatus(a[0],a[1]);
+      case 'setRelayCommand': return setRelayCommand_(a[0],String(a[1]||'MANUAL'),String(a[2]||''),a[3]);
       case 'saveAlarmConfig': return saveAlarmConfig(a[0],a[1],a[2]);
       case 'getHistory': return getHistory(a[0],a[1],a[2]);
       case 'getTokens': return getTokens(a[0]);
