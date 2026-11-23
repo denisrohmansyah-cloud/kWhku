@@ -30,7 +30,7 @@ ESP32 memakai Device API Key:
 - \`relayAction:"ack"\`: mengonfirmasi command dan status output yang diterapkan.
 - \`relayAction:"status"\`: melaporkan perubahan status aktual.
 
-Perintah manual kedaluwarsa setelah 120 detik bila belum diterima. Status perintah tidak dianggap sebagai status output aktual sampai ESP32 mengonfirmasi.
+Perintah manual kedaluwarsa setelah 120 detik bila belum diterima. Heartbeat status dikirim berkala setiap 30 detik; website menandai laporan lebih lama dari 90 detik sebagai `STALE`. Status perintah tidak dianggap sebagai status output GPIO sampai ESP32 mengonfirmasi. Website menampilkan output GPIO yang dilaporkan firmware, bukan umpan balik kontak COM/NO/NC secara elektrik.
 
 ## 3. Konfigurasi Google Apps Script
 
