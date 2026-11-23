@@ -317,3 +317,39 @@ input,select,textarea{max-width:100%;min-width:0}
 @media(max-width:650px){.relay-status-grid,.relay-config-grid{grid-template-columns:1fr}.relay-actions{align-items:stretch;flex-direction:column}.relay-actions .field{width:100%}}
 
 .relay-status-grid{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}.relay-pzem-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:12px 0 16px}.relay-decision-detail{margin-top:10px}.relay-pzem-grid .relay-status-card strong{font-size:18px}
+
+
+/* Relay controls: compact layout and live manual switch */
+.relay-compact-status{display:grid;grid-template-columns:minmax(220px,.85fr) minmax(0,2fr);gap:12px;margin:16px 0}
+.relay-live-card,.relay-live-meta>div{border:1px solid var(--line,#dbe3ef);border-radius:14px;background:#f8fafc;padding:15px}
+.relay-live-card{display:flex;align-items:center;min-height:100px}
+.relay-live-card small,.relay-live-meta small{display:block;color:var(--muted,#64748b);font-size:12px}
+.relay-live-card strong{display:block;font:800 27px "Plus Jakarta Sans",sans-serif;color:var(--ink,#17365d);margin:5px 0}
+.relay-live-card .sub{display:block;font-size:11px;line-height:1.4}
+.relay-live-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.relay-live-meta strong{display:block;margin-top:7px;font-size:15px;color:var(--ink,#17365d);overflow-wrap:anywhere}
+.relay-basic-config{align-items:center;margin:12px 0}
+.relay-basic-config .alarm-switch-card{min-height:76px}
+.relay-manual-card{margin:12px 0;padding:18px 20px;min-height:82px;background:linear-gradient(135deg,#fff 0%,#f3fbf7 100%);border-color:#cfe8dc}
+.relay-manual-card strong{font-family:"Plus Jakarta Sans",sans-serif;color:var(--ink,#17365d)}
+.relay-manual-card .toggle-switch{width:58px;height:34px;flex-basis:58px}
+.relay-manual-card .toggle-slider:before{width:26px;height:26px;left:4px;bottom:4px}
+.relay-manual-card .toggle-switch input:checked+.toggle-slider:before{transform:translateX(24px)}
+.relay-manual-card .toggle-switch input:disabled+.toggle-slider{opacity:.45;cursor:not-allowed}
+.relay-manual-card.is-disabled{background:#f8fafc;border-color:var(--line,#dbe3ef)}
+.relay-auto-info{margin:12px 0;padding:12px 15px;border:1px solid #cfe8dc;background:#f2fbf6;border-radius:12px;color:#16634b;font-size:13px;line-height:1.5}
+.relay-advanced{border:1px solid var(--line,#dbe3ef);border-radius:12px;padding:0 15px;margin:12px 0;background:#fff}
+.relay-advanced summary{cursor:pointer;padding:14px 0;color:var(--ink,#17365d);font-weight:700;font-size:13px;list-style:none}
+.relay-advanced summary::-webkit-details-marker{display:none}
+.relay-advanced summary:after{content:"＋";float:right;color:var(--muted,#64748b)}
+.relay-advanced[open] summary:after{content:"−"}
+.relay-advanced .relay-config-grid{margin:0 0 14px}
+.relay-recovery-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 14px}
+.relay-recovery-grid .field{margin:0}
+.relay-pzem-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin:0 0 12px}
+.relay-pzem-grid .relay-status-card{padding:11px}
+.relay-pzem-grid .relay-status-card strong{font-size:16px}
+.relay-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}
+.relay-actions .sub{font-size:12px}
+@media(max-width:850px){.relay-compact-status{grid-template-columns:1fr}.relay-live-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.relay-basic-config,.relay-recovery-grid{grid-template-columns:1fr}.relay-live-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.relay-live-card{min-height:86px}.relay-actions{align-items:stretch;flex-direction:column}.relay-actions #saveRelayConfig{width:100%}}
