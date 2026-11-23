@@ -55,6 +55,7 @@ static const uint8_t LCD_ADDRESS = 0x27;               // Change to 0x3F if scan
 static const uint32_t SENSOR_INTERVAL_MS = 2500;
 static const uint32_t READING_UPLOAD_INTERVAL_MS = 60000;
 static const uint32_t RELAY_POLL_INTERVAL_MS = 5000;
+static const uint32_t RELAY_HEARTBEAT_INTERVAL_MS = 30000;
 static const uint32_t WIFI_RETRY_INTERVAL_MS = 15000;
 static const uint32_t LCD_PAGE_INTERVAL_MS = 3000;
 static const uint32_t HTTP_TIMEOUT_MS = 10000;
@@ -80,6 +81,7 @@ bool temperatureDataValid = false;
 uint32_t lastSensorReadMs = 0;
 uint32_t lastReadingUploadMs = 0;
 uint32_t lastRelayPollMs = 0;
+uint32_t lastRelayStatusReportMs = 0;
 uint32_t lastWifiAttemptMs = 0;
 uint32_t lastLcdPageMs = 0;
 uint8_t lcdPage = 0;
@@ -242,7 +244,9 @@ void readSensors() {
 
 // ---------------- RELAY STATUS REPORTING ----------------
 void reportRelayStatusIfNeeded() {
-  if (!relayStatusNeedsReport || WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  const bool heartbeatDue = (millis() - lastRelayStatusReportMs) >= RELAY_HEARTBEAT_INTERVAL_MS;
+  if (!relayStatusNeedsReport && !heartbeatDue) return;
   DynamicJsonDocument doc(768);
   doc["apiKey"] = DEVICE_API_KEY;
   doc["customerId"] = CUSTOMER_ID;
@@ -252,7 +256,7 @@ void reportRelayStatusIfNeeded() {
   doc["detail"] = relayReason;
   String payload, response;
   serializeJson(doc, payload);
-  if (postJson(payload, response)) relayStatusNeedsReport = false;
+  if (postJson(payload, response)) { relayStatusNeedsReport = false; lastRelayStatusReportMs = millis(); }
 }
 
 void acknowledgeRelayCommand(const String& commandId, const String& detail) {
