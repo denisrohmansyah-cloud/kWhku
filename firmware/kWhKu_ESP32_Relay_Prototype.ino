@@ -267,6 +267,14 @@ void reportRelayStatusIfNeeded() {
   doc["detail"] = relayReason;
   doc["decisionState"] = relayDecisionState;
   doc["decisionReason"] = relayDecisionReason;
+  if (electricalDataValid) {
+    doc["voltageV"] = voltageV; doc["currentA"] = currentA;
+    doc["powerW"] = powerW; doc["energyKwh"] = energyKwh;
+    doc["frequencyHz"] = frequencyHz; doc["powerFactor"] = powerFactor;
+  }
+  if (temperatureDataValid) {
+    doc["temperatureC"] = temperatureC; doc["humidityPct"] = humidityPct;
+  }
   String payload, response;
   serializeJson(doc, payload);
   if (postJson(payload, response)) { relayStatusNeedsReport = false; lastRelayStatusReportMs = millis(); }
@@ -283,6 +291,14 @@ void acknowledgeRelayCommand(const String& commandId, const String& detail) {
   doc["detail"] = detail;
   doc["decisionState"] = relayDecisionState;
   doc["decisionReason"] = relayDecisionReason;
+  if (electricalDataValid) {
+    doc["voltageV"] = voltageV; doc["currentA"] = currentA;
+    doc["powerW"] = powerW; doc["energyKwh"] = energyKwh;
+    doc["frequencyHz"] = frequencyHz; doc["powerFactor"] = powerFactor;
+  }
+  if (temperatureDataValid) {
+    doc["temperatureC"] = temperatureC; doc["humidityPct"] = humidityPct;
+  }
   String payload, response;
   serializeJson(doc, payload);
   postJson(payload, response);
@@ -320,14 +336,24 @@ void applyRelayConfig(JsonObjectConst cfg) {
   relayConfig = next;
   relayConfigValid = true;
 
-  if (!relayConfig.enabled || (relayConfig.mode != "MANUAL" && relayConfig.mode != "AUTO")) {
+  if (!relayConfig.enabled) {
     autoTripLatched = true;
     normalSinceMs = 0;
-    setRelayOutput(false, "RELAY_DISABLED_OR_INVALID_MODE");
+    manualRequestedState = "OFF";
+    setRelayDecision("OFF", "RELAY_CONTROL_DISABLED");
+    setRelayOutput(false, "RELAY_DISABLED");
+  } else if (relayConfig.mode != "MANUAL" && relayConfig.mode != "AUTO") {
+    autoTripLatched = true;
+    normalSinceMs = 0;
+    manualRequestedState = "OFF";
+    setRelayDecision("UNKNOWN", "INVALID_RELAY_MODE");
+    setRelayOutput(false, "INVALID_RELAY_MODE");
   } else if (modeChanged) {
     // A mode transition never carries the previous ON state across modes.
     autoTripLatched = true;
     normalSinceMs = 0;
+    manualRequestedState = "OFF";
+    setRelayDecision("OFF", "MODE_CHANGED_SAFE_OFF");
     setRelayOutput(false, "MODE_CHANGED_SAFE_OFF");
   }
 
