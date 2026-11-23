@@ -56,7 +56,7 @@ static const uint8_t LCD_ADDRESS = 0x27;               // Change to 0x3F if scan
 static const uint32_t SENSOR_INTERVAL_MS = 2500;
 static const uint32_t READING_UPLOAD_INTERVAL_MS = 60000;
 static const uint32_t RELAY_POLL_INTERVAL_MS = 5000;
-static const uint32_t RELAY_HEARTBEAT_INTERVAL_MS = 30000;
+static const uint32_t RELAY_HEARTBEAT_INTERVAL_MS = 5000;
 static const uint32_t WIFI_RETRY_INTERVAL_MS = 15000;
 static const uint32_t LCD_PAGE_INTERVAL_MS = 3000;
 static const uint32_t HTTP_TIMEOUT_MS = 10000;
@@ -399,6 +399,7 @@ void processManualCommand(JsonObjectConst command) {
   manualRequestedState = "ON";
   String alarmReason;
   if (evaluateSelectedRelayAlarms(alarmReason)) {
+    manualRequestedState = "OFF"; // Require a fresh manual ON after an alarm clears.
     setRelayDecision("OFF", "MANUAL_ON_BLOCKED:" + alarmReason);
     setRelayOutput(false, "MANUAL_ON_BLOCKED");
     lastProcessedCommandDetail = "ON ditolak oleh interlock data PZEM: " + alarmReason;
@@ -502,6 +503,7 @@ void evaluateAutomaticRelay() {
       return;
     }
     if (blockingAlarm) {
+      manualRequestedState = "OFF"; // Do not automatically re-energize after a manual-mode trip.
       setRelayDecision("OFF", "MANUAL_ON_BLOCKED:" + alarmReason);
       setRelayOutput(false, "MANUAL_ON_BLOCKED");
       return;
