@@ -496,7 +496,14 @@ $('relayManualToggle')?.addEventListener('change',async()=>{
   const result=await api('setRelayCommand',session,'MANUAL',requestedState,id);
   if(!result?.ok)throw Error(result?.message||'Perintah relay gagal dikirim');
   toast(result.message||'Perintah masuk antrean');
-  await loadRelayStatus();
+  // Poll briefly for the ESP32 acknowledgement instead of waiting for the normal refresh tick.
+  for(let attempt=0;attempt<5;attempt++){
+   await loadRelayStatus();
+   const current=String(relayCurrentRow?.outputState||'').toUpperCase();
+   const commandStatus=String(relayCurrentRow?.commandStatus||'').toUpperCase();
+   if(commandStatus==='ACKNOWLEDGED'&&current===requestedState)break;
+   await new Promise(resolve=>setTimeout(resolve,650));
+  }
  }catch(error){
   toast(error.message||String(error));
   toggle.checked=String(relayCurrentRow?.outputState||'OFF')==='ON';
