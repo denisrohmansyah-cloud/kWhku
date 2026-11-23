@@ -176,13 +176,34 @@ void safeRelayStartup() {
   relayStatusNeedsReport = true;
 }
 
+bool wifiConnectionInProgress = false;
+uint32_t wifiConnectStartedMs = 0;
+static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
+
 void connectWiFiNonBlocking() {
-  if (WiFi.status() == WL_CONNECTED) return;
   const uint32_t now = millis();
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnectionInProgress = false;
+    return;
+  }
+
+  // Jangan panggil WiFi.begin() berulang ketika ESP32 masih mengasosiasikan AP.
+  if (wifiConnectionInProgress) {
+    if (now - wifiConnectStartedMs < WIFI_CONNECT_TIMEOUT_MS) return;
+
+    Serial.println("[WiFi] Timeout koneksi; menyiapkan percobaan ulang.");
+    WiFi.disconnect(false, false);
+    wifiConnectionInProgress = false;
+    lastWifiAttemptMs = now;
+    return;
+  }
+
   if (now - lastWifiAttemptMs < WIFI_RETRY_INTERVAL_MS) return;
+
   lastWifiAttemptMs = now;
-  Serial.println("[WiFi] Mencoba koneksi...");
-  WiFi.mode(WIFI_STA);
+  wifiConnectStartedMs = now;
+  wifiConnectionInProgress = true;
+  Serial.println("[WiFi] Memulai koneksi ulang...");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
@@ -668,8 +689,11 @@ void setup() {
   lcd.print("Relay SAFE OFF");
 
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  lastWifiAttemptMs = millis();
+  wifiConnectionInProgress = true;
+  wifiConnectStartedMs = millis();
+  lastWifiAttemptMs = wifiConnectStartedMs;
   lastSensorReadMs = millis() - SENSOR_INTERVAL_MS;
   lastReadingUploadMs = millis();
   lastRelayPollMs = millis() - RELAY_POLL_INTERVAL_MS;
