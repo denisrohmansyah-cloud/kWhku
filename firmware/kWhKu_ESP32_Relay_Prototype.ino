@@ -47,6 +47,7 @@ static const char* DEVICE_ID = "ESP32-001";
 
 static const float DEFAULT_TARIFF_RP_PER_KWH = 605.0f; // Display/reference only
 static const bool RELAY_ACTIVE_LOW = true;             // Verify with LOW-VOLTAGE test
+static const bool ENABLE_LOW_VOLTAGE_RELAY_TEST = false; // Default locked: do not actuate a mains-connected relay
 static const uint8_t RELAY_PIN = 25;
 static const uint8_t DHT_PIN = 4;
 static const uint8_t DHT_TYPE = DHT11;
@@ -134,12 +135,19 @@ String boolText(bool value) {
 }
 
 void setRelayOutput(bool on, const String& reason) {
+  // Output actuation is locked by default. Enable only for isolated extra-low-voltage bench testing.
+  if (!ENABLE_LOW_VOLTAGE_RELAY_TEST) {
+    on = false;
+  }
   // Any invalid configuration or disabled relay always forces output OFF.
   if (!relayConfigValid || !relayConfig.enabled) on = false;
 
-  const bool changed = (relayActualOn != on) || (relayReason != reason);
+  const String effectiveReason = !ENABLE_LOW_VOLTAGE_RELAY_TEST
+    ? "ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY"
+    : reason;
+  const bool changed = (relayActualOn != on) || (relayReason != effectiveReason);
   relayActualOn = on;
-  relayReason = reason;
+  relayReason = effectiveReason;
 
   const uint8_t onLevel = RELAY_ACTIVE_LOW ? LOW : HIGH;
   const uint8_t offLevel = RELAY_ACTIVE_LOW ? HIGH : LOW;
@@ -337,6 +345,13 @@ void processManualCommand(JsonObjectConst command) {
   }
   lastProcessedCommandId = id;
 
+  if (!ENABLE_LOW_VOLTAGE_RELAY_TEST) {
+    setRelayOutput(false, "ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY");
+    lastProcessedCommandDetail = "Output relay dikunci pada firmware; sinkronisasi status tetap aktif.";
+    acknowledgeRelayCommand(id, lastProcessedCommandDetail);
+    return;
+  }
+
   if (desired == "OFF") {
     setRelayOutput(false, "WEBSITE_MANUAL_OFF");
     lastProcessedCommandDetail = relayReason;
@@ -396,6 +411,10 @@ void pollRelayServer() {
 
 // ---------------- LOCAL AUTOMATIC ALARM CONTROL ----------------
 void evaluateAutomaticRelay() {
+  if (!ENABLE_LOW_VOLTAGE_RELAY_TEST) {
+    setRelayOutput(false, "ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY");
+    return;
+  }
   if (!relayConfigValid || !relayConfig.enabled) {
     setRelayOutput(false, "RELAY_DISABLED");
     return;
