@@ -531,7 +531,7 @@ void loop() {
 
     // Bad sensor values always force the prototype output OFF.
     if (!electricalDataValid ||
-        (relayConfigValid && relayConfig.alarmTemperatureMaxEnabled && !temperatureDataValid)) {
+        (relayConfigValid && (relayConfig.alarmTemperatureMaxEnabled || relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled) && !temperatureDataValid)) {
       if (relayActualOn) setRelayOutput(false, "SENSOR_INVALID_SAFE_OFF");
     }
     evaluateAutomaticRelay();
