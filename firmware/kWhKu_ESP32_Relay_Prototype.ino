@@ -45,7 +45,10 @@ static const char* DEVICE_API_KEY = "YOUR_DEVICE_API_KEY";
 static const char* CUSTOMER_ID = "PLG-001";
 static const char* DEVICE_ID = "ESP32-001";
 
-static const float DEFAULT_TARIFF_RP_PER_KWH = 605.0f; // Display/reference only
+static const float DEFAULT_TARIFF_RP_PER_KWH = 605.0f; // Tarif pelanggan (Rp/kWh)
+// Konsumsi energi selama periode tagihan, BUKAN energi kumulatif sejak PZEM dinyalakan.
+// Perbarui nilai ini sesuai rekap periode tagihan dari dashboard/Google Sheets.
+static const float BILLING_PERIOD_ENERGY_KWH = 12.0f;
 static const bool RELAY_ACTIVE_LOW = true;             // Verify with LOW-VOLTAGE test
 static const bool ENABLE_LOW_VOLTAGE_RELAY_TEST = false; // Default locked: do not actuate a mains-connected relay
 static const uint8_t RELAY_PIN = 25;
@@ -617,12 +620,10 @@ void updateLcd() {
       break;
 
     case 2: {
-      const float costRp = electricalDataValid
-        ? energyKwh * DEFAULT_TARIFF_RP_PER_KWH : 0.0f;
-      printLcdLine(0, "Energi terpakai");
-      printLcdLine(1, electricalDataValid
-        ? "Biaya: Rp" + String((unsigned long)(costRp + 0.5f))
-        : "Biaya: --");
+      // Menggunakan konsumsi energi untuk periode tagihan, bukan counter kumulatif PZEM.
+      const float costRp = BILLING_PERIOD_ENERGY_KWH * DEFAULT_TARIFF_RP_PER_KWH;
+      printLcdLine(0, "Energi:" + String(BILLING_PERIOD_ENERGY_KWH, 2) + "kWh");
+      printLcdLine(1, "Biaya:Rp" + String((unsigned long)(costRp + 0.5f)));
       break;
     }
 
