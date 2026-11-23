@@ -450,14 +450,16 @@ async function loadRelayStatus(){
 
 function syncRelayControls(){
  const automatic=$('relayMode').value==='AUTO';
- const enabled=$('relayEnabled').checked;
+ const enabled=$('relayEnabled').checked&&!!relayCurrentRow?.enabled;
+ const modeSaved=String(relayCurrentRow?.mode||'')===String($('relayMode').value);
  const fresh=relayCurrentRow&&relayCurrentRow.outputState!=='STALE'&&relayCurrentRow.outputState!=='UNKNOWN'&&relayCurrentRow.statusAgeSeconds!==null&&Number(relayCurrentRow.statusAgeSeconds)<=15;
  const pending=String(relayCurrentRow?.commandStatus||'')==='PENDING';
  const toggle=$('relayManualToggle');
- if(toggle)toggle.disabled=automatic||!enabled||!fresh||pending||relayCommandInFlight;
- $('relayManualControl').classList.toggle('is-disabled',automatic||!enabled||!fresh);
+ if(toggle)toggle.disabled=automatic||!enabled||!modeSaved||!fresh||pending||relayCommandInFlight;
+ $('relayManualControl').classList.toggle('is-disabled',automatic||!enabled||!modeSaved||!fresh);
  $('relayAutoInfo').classList.toggle('hidden',!automatic);
  $('relayManualControl').classList.toggle('hidden',automatic);
+ if($('relayManualStatus')&&enabled&&!modeSaved)$('relayManualStatus').textContent='Simpan perubahan mode terlebih dahulu sebelum mengendalikan relay.';
  $('relayMode').disabled=false;
  $('relayEnabled').disabled=false;
 }
@@ -470,7 +472,7 @@ $('relayManualToggle')?.addEventListener('change',async()=>{
  const toggle=$('relayManualToggle');
  const requestedState=toggle.checked?'ON':'OFF';
  const id=relaySelectedCustomer();
- if(!$('relayEnabled').checked||$('relayMode').value!=='MANUAL'){
+ if(!$('relayEnabled').checked||!relayCurrentRow?.enabled||$('relayMode').value!=='MANUAL'||relayCurrentRow?.mode!=='MANUAL'){
   toggle.checked=String(relayCurrentRow?.outputState||'OFF')==='ON';
   toast('Aktifkan kendali relay dan pilih mode MANUAL terlebih dahulu.');
   return;
