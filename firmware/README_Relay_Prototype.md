@@ -90,7 +90,16 @@ Di firmware tersedia konstanta `ENABLE_LOW_VOLTAGE_RELAY_TEST` yang default-nya 
 
 Waktu stabil dapat diatur 10–600 detik (default 60 detik). Saat restart, firmware memulai dari OFF dan dalam mode AUTO menunggu data sensor valid serta periode stabil sebelum mengaktifkan output.
 
-## 6. Urutan pengujian yang disarankan
+## 6. Data PZEM dan logika keputusan
+
+- ESP32 membaca PZEM setiap 2,5 detik dan mengevaluasi pemicu alarm yang dipilih secara lokal.
+- Mode AUTO menetapkan keputusan OFF saat salah satu alarm yang dipilih aktif. Ketika semua pemicu normal terus-menerus selama waktu stabil yang diatur, keputusan menjadi ON bila pemulihan otomatis aktif.
+- Mode MANUAL menerima permintaan ON/OFF dari Admin. Permintaan ON ditolak bila data sensor yang diperlukan tidak valid atau alarm relay terpilih sedang aktif; OFF selalu diprioritaskan.
+- Snapshot PZEM (tegangan, arus, daya, energi, frekuensi, PF serta suhu/kelembapan bila valid) dikirim bersama heartbeat setiap 30 detik. Data pengukuran historis pada `Data_Listrik` tetap menggunakan interval upload 60 detik.
+- Website menampilkan keputusan logis PZEM, snapshot sensor yang menyertainya, dan output GPIO25 secara terpisah. `ON` pada keputusan tidak berarti kontak relay sudah ON.
+- Jika heartbeat lebih lama dari 90 detik, website menandai keputusan dan snapshot PZEM sebagai `STALE`.
+
+## 7. Urutan pengujian yang disarankan
 
 1. Pastikan relay CH1 belum terhubung ke beban AC/instalasi PLN.
 2. Gunakan catu DC ekstra-rendah yang terisolasi dan beban uji kecil dengan pembatas arus/fuse yang sesuai.
@@ -102,6 +111,6 @@ Waktu stabil dapat diatur 10–600 detik (default 60 detik). Saat restart, firmw
 8. Uji skenario sensor terputus dan Wi-Fi terputus. Sensor gagal harus membuat output OFF; Wi-Fi putus tidak boleh mematikan aturan lokal AUTO.
 9. Periksa sheet \`Perintah_Relay\` dan \`Log_Relay\`, lalu pastikan riwayat listrik tetap masuk ke \`Data_Listrik\` seperti sebelumnya.
 
-## 7. Batas hasil verifikasi
+## 8. Batas hasil verifikasi
 
 Kode sudah ditambahkan ke repository, tetapi belum dikompilasi dengan board ESP32 pengguna, belum diuji pada hardware, dan belum diuji terhadap deployment Apps Script/Google Sheets aktif. Lakukan uji kompilasi dan uji DC tegangan rendah terlebih dahulu. Jangan lanjutkan ke pengendalian beban AC kamar dengan modul relay PCB saat ini.
