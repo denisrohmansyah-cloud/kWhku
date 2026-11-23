@@ -349,7 +349,7 @@ $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh',
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV diunduh')};
 setInterval(()=>{if(session)refresh().catch(()=>{})},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
 // Relay telemetry is reported by ESP32 every 5 seconds; refresh its panel independently.
-setInterval(()=>{if(session&&$('page-alarmSettings')?.classList.contains('active'))loadRelayStatus().catch(()=>{})},5000);
+setInterval(()=>{if(session&&$('page-alarmSettings')?.classList.contains('active'))loadRelayStatus().catch(()=>{})},1500);
 
  
 // ---- Pengajuan penambahan daya
@@ -380,6 +380,7 @@ $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan men
 function relaySelectedCustomer(){return admin()?String($('relayCustomer')?.value||''):String(session?.customerId||'')}
 let relayCurrentRow=null;
 let relayCommandInFlight=false;
+let relayStatusFetchInFlight=false;
 
 function renderRelayStatus(row){
  if(!row)return;
@@ -442,10 +443,13 @@ async function loadRelaySettings(){
 }
 
 async function loadRelayStatus(){
- if(!session)return;
- const r=await api('getRelayStatus',session,relaySelectedCustomer());
- if(!r?.ok)throw Error(r?.message||'Gagal memuat status relay');
- const row=(r.rows||[])[0];if(row)renderRelayStatus(row);
+ if(!session||relayStatusFetchInFlight)return;
+ relayStatusFetchInFlight=true;
+ try{
+  const r=await api('getRelayStatus',session,relaySelectedCustomer());
+  if(!r?.ok)throw Error(r?.message||'Gagal memuat status relay');
+  const row=(r.rows||[])[0];if(row)renderRelayStatus(row);
+ }finally{relayStatusFetchInFlight=false}
 }
 
 function syncRelayControls(){
