@@ -381,7 +381,8 @@ function renderRelayStatus(row){
  $('relayActualState').textContent=row.outputState||'UNKNOWN';
  $('relayDesiredState').textContent=row.desiredState||'OFF';
  $('relayCommandStatus').textContent=row.commandStatus||'NO_COMMAND';
- $('relayModeBadge').textContent=(row.enabled?'AKTIF · ':'NONAKTIF · ')+(row.mode||'MANUAL');
+ const outputLocked=String(row.reason||'').includes('ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY');
+ $('relayModeBadge').textContent=outputLocked?'OUTPUT LOCKED':(row.enabled?'AKTIF · ':'NONAKTIF · ')+(row.mode||'MANUAL');
  const reported=row.reportedAt?'Laporan ESP32 '+new Date(row.reportedAt).toLocaleString('id-ID')+(row.statusAgeSeconds!==null?' · '+row.statusAgeSeconds+' detik lalu':''):'Belum ada heartbeat ESP32';
  $('relayReason').textContent=(row.reason||'Belum ada laporan perangkat')+' · '+reported;
 }
