@@ -379,12 +379,26 @@ function relaySelectedCustomer(){return admin()?String($('relayCustomer')?.value
 function renderRelayStatus(row){
  if(!row)return;
  $('relayActualState').textContent=row.outputState||'UNKNOWN';
+ $('relayDecisionState').textContent=row.decisionState||'UNKNOWN';
+ $('relayDecisionReason').textContent=row.decisionReason||'Belum ada evaluasi PZEM';
  $('relayDesiredState').textContent=row.desiredState||'OFF';
  $('relayCommandStatus').textContent=row.commandStatus||'NO_COMMAND';
  const outputLocked=String(row.reason||'').includes('ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY');
  $('relayModeBadge').textContent=outputLocked?'OUTPUT LOCKED':(row.enabled?'AKTIF · ':'NONAKTIF · ')+(row.mode||'MANUAL');
- const reported=row.reportedAt?'Laporan ESP32 '+new Date(row.reportedAt).toLocaleString('id-ID')+(row.statusAgeSeconds!==null?' · '+row.statusAgeSeconds+' detik lalu':''):'Belum ada heartbeat ESP32';
- $('relayReason').textContent=(row.reason||'Belum ada laporan perangkat')+' · '+reported;
+ const reported=row.reportedAt?'Heartbeat ESP32 '+new Date(row.reportedAt).toLocaleString('id-ID')+(row.statusAgeSeconds!==null?' · '+row.statusAgeSeconds+' detik lalu':''):'Belum ada heartbeat ESP32';
+ $('relayReason').textContent=(row.reason||'Belum ada laporan output GPIO')+' · '+reported;
+
+ // Tampilkan pembacaan PZEM terbaru yang sudah diterima dashboard.
+ const customer=customers.find(x=>String(x.customerId)===String(row.customerId));
+ const p=customer?.latest;
+ $('relayPzemVoltage').textContent=p?fmtV(p.voltageV)+' V':'— V';
+ $('relayPzemCurrent').textContent=p?fmtCurrentA(p.currentA)+' A':'— A';
+ $('relayPzemPower').textContent=p?fmtW(p.powerW)+' W':'— W';
+ $('relayPzemEnergy').textContent=p?fmtEnergy(p.energyKwh)+' kWh':'— kWh';
+ $('relayPzemFrequency').textContent=p?fmtHz(p.frequencyHz)+' Hz':'— Hz';
+ $('relayPzemPF').textContent=p?fmtPF(p.powerFactor):'—';
+ const pzemTime=p?.timestamp?' · Data PZEM '+new Date(p.timestamp).toLocaleString('id-ID'):'';
+ $('relayDecisionReason').textContent=(row.decisionReason||'Belum ada evaluasi PZEM')+pzemTime;
 }
 async function loadRelaySettings(){
  if(!session)return;
