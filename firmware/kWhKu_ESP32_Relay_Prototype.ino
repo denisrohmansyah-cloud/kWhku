@@ -51,7 +51,7 @@ static const float DEFAULT_TARIFF_RP_PER_KWH = 605.0f; // Tarif pelanggan (Rp/kW
 // Perbarui nilai ini sesuai rekap periode tagihan dari dashboard/Google Sheets.
 static const float BILLING_PERIOD_ENERGY_KWH = 12.0f;
 static const bool RELAY_ACTIVE_LOW = true;             // Verify with LOW-VOLTAGE test
-static const bool ENABLE_LOW_VOLTAGE_RELAY_TEST = false; // Default locked: do not actuate a mains-connected relay
+static const bool ENABLE_RELAY_OUTPUT = true; // Relay output is enabled; keep startup and fault handling fail-safe.
 static const uint8_t RELAY_PIN = 25;
 static const uint8_t DHT_PIN = 4;
 static const uint8_t DHT_TYPE = DHT11;
@@ -153,16 +153,14 @@ String boolText(bool value) {
 }
 
 void setRelayOutput(bool on, const String& reason) {
-  // Output actuation is locked by default. Enable only for isolated extra-low-voltage bench testing.
-  if (!ENABLE_LOW_VOLTAGE_RELAY_TEST) {
-    on = false;
-  }
-  // Any invalid configuration or disabled relay always forces output OFF.
-  if (!relayConfigValid || !relayConfig.enabled) on = false;
+  // Output is permitted only when the firmware feature, server configuration,
+  // and current control decision all allow it. Startup and invalid states remain OFF.
+  if (!ENABLE_RELAY_OUTPUT || !relayConfigValid || !relayConfig.enabled) on = false;
 
-  const String effectiveReason = !ENABLE_LOW_VOLTAGE_RELAY_TEST
-    ? "ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY"
-    : reason;
+  const String effectiveReason = !ENABLE_RELAY_OUTPUT
+    ? "RELAY_OUTPUT_DISABLED_IN_FIRMWARE"
+    : (!relayConfigValid ? "RELAY_CONFIG_NOT_VALID" :
+       (!relayConfig.enabled ? "RELAY_CONTROL_DISABLED" : reason));
   const bool changed = (relayActualOn != on) || (relayReason != effectiveReason);
   relayActualOn = on;
   relayReason = effectiveReason;
@@ -586,8 +584,8 @@ void processManualCommand(JsonObjectConst command) {
   setRelayDecision("ON", "MANUAL_ON_ALLOWED_BY_LATEST_PZEM");
   setRelayOutput(true, "WEBSITE_MANUAL_ON");
   lastProcessedCommandDetail = "ON diminta dari website; " + relayDecisionReason;
-  if (!ENABLE_LOW_VOLTAGE_RELAY_TEST) {
-    lastProcessedCommandDetail += "; output fisik dikunci untuk pengujian komunikasi.";
+  if (!ENABLE_RELAY_OUTPUT) {
+    lastProcessedCommandDetail += "; output dinonaktifkan melalui konfigurasi firmware.";
   }
   acknowledgeRelayCommand(id, lastProcessedCommandDetail);
 }
