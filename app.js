@@ -388,16 +388,15 @@ function renderRelayStatus(row){
  const reported=row.reportedAt?'Heartbeat ESP32 '+new Date(row.reportedAt).toLocaleString('id-ID')+(row.statusAgeSeconds!==null?' · '+row.statusAgeSeconds+' detik lalu':''):'Belum ada heartbeat ESP32';
  $('relayReason').textContent=(row.reason||'Belum ada laporan output GPIO')+' · '+reported;
 
- // Tampilkan pembacaan PZEM terbaru yang sudah diterima dashboard.
- const customer=customers.find(x=>String(x.customerId)===String(row.customerId));
- const p=customer?.latest;
- $('relayPzemVoltage').textContent=p?fmtV(p.voltageV)+' V':'— V';
- $('relayPzemCurrent').textContent=p?fmtCurrentA(p.currentA)+' A':'— A';
- $('relayPzemPower').textContent=p?fmtW(p.powerW)+' W':'— W';
- $('relayPzemEnergy').textContent=p?fmtEnergy(p.energyKwh)+' kWh':'— kWh';
- $('relayPzemFrequency').textContent=p?fmtHz(p.frequencyHz)+' Hz':'— Hz';
- $('relayPzemPF').textContent=p?fmtPF(p.powerFactor):'—';
- const pzemTime=p?.timestamp?' · Data PZEM '+new Date(p.timestamp).toLocaleString('id-ID'):'';
+ // Data ini berasal dari snapshot sensor lokal yang dikirim bersama heartbeat ESP32.
+ const hasPzem=num(row.voltageV)!==null && num(row.currentA)!==null && num(row.powerW)!==null;
+ $('relayPzemVoltage').textContent=hasPzem?fmtV(row.voltageV)+' V':'— V';
+ $('relayPzemCurrent').textContent=hasPzem?fmtCurrentA(row.currentA)+' A':'— A';
+ $('relayPzemPower').textContent=hasPzem?fmtW(row.powerW)+' W':'— W';
+ $('relayPzemEnergy').textContent=num(row.energyKwh)!==null?fmtEnergy(row.energyKwh)+' kWh':'— kWh';
+ $('relayPzemFrequency').textContent=num(row.frequencyHz)!==null?fmtHz(row.frequencyHz)+' Hz':'— Hz';
+ $('relayPzemPF').textContent=num(row.powerFactor)!==null?fmtPF(row.powerFactor):'—';
+ const pzemTime=row.reportedAt?' · Snapshot PZEM '+new Date(row.reportedAt).toLocaleString('id-ID'):'';
  $('relayDecisionReason').textContent=(row.decisionReason||'Belum ada evaluasi PZEM')+pzemTime;
 }
 async function loadRelaySettings(){
