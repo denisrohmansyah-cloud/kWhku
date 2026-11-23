@@ -252,7 +252,7 @@ void reportRelayStatusIfNeeded() {
   doc["customerId"] = CUSTOMER_ID;
   doc["deviceId"] = DEVICE_ID;
   doc["relayAction"] = "status";
-  doc["actualState"] = relayActualOn ? "ON" : "OFF";
+  doc["outputState"] = relayActualOn ? "ON" : "OFF";
   doc["detail"] = relayReason;
   String payload, response;
   serializeJson(doc, payload);
@@ -266,7 +266,7 @@ void acknowledgeRelayCommand(const String& commandId, const String& detail) {
   doc["deviceId"] = DEVICE_ID;
   doc["relayAction"] = "ack";
   doc["commandId"] = commandId;
-  doc["actualState"] = relayActualOn ? "ON" : "OFF";
+  doc["outputState"] = relayActualOn ? "ON" : "OFF";
   doc["detail"] = detail;
   String payload, response;
   serializeJson(doc, payload);
@@ -337,6 +337,13 @@ void processManualCommand(JsonObjectConst command) {
   }
   lastProcessedCommandId = id;
 
+  if (desired == "OFF") {
+    setRelayOutput(false, "WEBSITE_MANUAL_OFF");
+    lastProcessedCommandDetail = relayReason;
+    acknowledgeRelayCommand(id, lastProcessedCommandDetail);
+    return;
+  }
+
   if (!relayConfigValid || !relayConfig.enabled || relayConfig.mode != "MANUAL" || mode != "MANUAL") {
     setRelayOutput(false, "MANUAL_COMMAND_REJECTED_SAFE_OFF");
     lastProcessedCommandDetail = "Ditolak: relay tidak aktif atau mode bukan MANUAL.";
@@ -346,17 +353,14 @@ void processManualCommand(JsonObjectConst command) {
 
   const bool dhtSelected = relayConfig.alarmTemperatureMaxEnabled ||
     relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled;
-  if (!electricalDataValid || (dhtSelected && !temperatureDataValid)) {
-    setRelayOutput(false, "SENSOR_INVALID_SAFE_OFF");
-    lastProcessedCommandDetail = "Ditolak: data sensor tidak valid.";
+  if (desired != "ON" || !electricalDataValid || (dhtSelected && !temperatureDataValid)) {
+    setRelayOutput(false, "SENSOR_INVALID_OR_INVALID_COMMAND_SAFE_OFF");
+    lastProcessedCommandDetail = "Ditolak: perintah tidak valid atau data sensor tidak valid.";
     acknowledgeRelayCommand(id, lastProcessedCommandDetail);
     return;
   }
 
-  if (desired == "ON") setRelayOutput(true, "WEBSITE_MANUAL_ON");
-  else if (desired == "OFF") setRelayOutput(false, "WEBSITE_MANUAL_OFF");
-  else setRelayOutput(false, "INVALID_COMMAND_SAFE_OFF");
-
+  setRelayOutput(true, "WEBSITE_MANUAL_ON");
   lastProcessedCommandDetail = relayReason;
   acknowledgeRelayCommand(id, lastProcessedCommandDetail);
 }
