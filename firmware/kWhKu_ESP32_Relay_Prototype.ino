@@ -88,10 +88,26 @@ uint8_t lcdPage = 0;
 struct RelayConfig {
   bool enabled = false;
   String mode = "MANUAL"; // MANUAL or AUTO
+  bool alarmVoltageMinEnabled = false;
+  bool alarmVoltageMaxEnabled = false;
   bool alarmCurrentMaxEnabled = false;
+  bool alarmPowerMaxEnabled = false;
+  bool alarmFrequencyMinEnabled = false;
+  bool alarmFrequencyMaxEnabled = false;
+  bool alarmPowerFactorMinEnabled = false;
   bool alarmTemperatureMaxEnabled = false;
+  bool alarmHumidityMinEnabled = false;
+  bool alarmHumidityMaxEnabled = false;
+  float minVoltageV = 198.0f;
+  float maxVoltageV = 231.0f;
   float maxCurrentA = 4.0f;
+  float maxPowerW = 800.0f;
+  float minFrequencyHz = 49.5f;
+  float maxFrequencyHz = 50.5f;
+  float minPowerFactor = 0.85f;
   float maxTemperatureC = 30.0f;
+  float minHumidityPct = 40.0f;
+  float maxHumidityPct = 70.0f;
   bool autoRecover = true;
   uint16_t recoverStableSeconds = 60;
 };
@@ -251,10 +267,26 @@ void applyRelayConfig(JsonObjectConst cfg) {
   RelayConfig next;
   next.enabled = cfg["enabled"] | false;
   next.mode = String((const char*)(cfg["mode"] | "MANUAL"));
+  next.alarmVoltageMinEnabled = cfg["alarmVoltageMinEnabled"] | false;
+  next.alarmVoltageMaxEnabled = cfg["alarmVoltageMaxEnabled"] | false;
   next.alarmCurrentMaxEnabled = cfg["alarmCurrentMaxEnabled"] | false;
+  next.alarmPowerMaxEnabled = cfg["alarmPowerMaxEnabled"] | false;
+  next.alarmFrequencyMinEnabled = cfg["alarmFrequencyMinEnabled"] | false;
+  next.alarmFrequencyMaxEnabled = cfg["alarmFrequencyMaxEnabled"] | false;
+  next.alarmPowerFactorMinEnabled = cfg["alarmPowerFactorMinEnabled"] | false;
   next.alarmTemperatureMaxEnabled = cfg["alarmTemperatureMaxEnabled"] | false;
+  next.alarmHumidityMinEnabled = cfg["alarmHumidityMinEnabled"] | false;
+  next.alarmHumidityMaxEnabled = cfg["alarmHumidityMaxEnabled"] | false;
+  next.minVoltageV = cfg["minVoltageV"] | 198.0f;
+  next.maxVoltageV = cfg["maxVoltageV"] | 231.0f;
   next.maxCurrentA = cfg["maxCurrentA"] | 4.0f;
+  next.maxPowerW = cfg["maxPowerW"] | 800.0f;
+  next.minFrequencyHz = cfg["minFrequencyHz"] | 49.5f;
+  next.maxFrequencyHz = cfg["maxFrequencyHz"] | 50.5f;
+  next.minPowerFactor = cfg["minPowerFactor"] | 0.85f;
   next.maxTemperatureC = cfg["maxTemperatureC"] | 30.0f;
+  next.minHumidityPct = cfg["minHumidityPct"] | 40.0f;
+  next.maxHumidityPct = cfg["maxHumidityPct"] | 70.0f;
   next.autoRecover = cfg["autoRecover"] | true;
   next.recoverStableSeconds = cfg["recoverStableSeconds"] | 60;
 
@@ -294,7 +326,7 @@ void processManualCommand(JsonObjectConst command) {
     return;
   }
 
-  if (!electricalDataValid || (relayConfig.alarmTemperatureMaxEnabled && !temperatureDataValid)) {
+  if (!electricalDataValid || ((relayConfig.alarmTemperatureMaxEnabled || relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled) && !temperatureDataValid)) {
     setRelayOutput(false, "SENSOR_INVALID_SAFE_OFF");
     acknowledgeRelayCommand(id, "Ditolak: data sensor tidak valid.");
     return;
@@ -344,8 +376,9 @@ void evaluateAutomaticRelay() {
   }
   if (relayConfig.mode != "AUTO") return;
 
-  if (!electricalDataValid ||
-      (relayConfig.alarmTemperatureMaxEnabled && !temperatureDataValid)) {
+  const bool dhtSelected = relayConfig.alarmTemperatureMaxEnabled ||
+    relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled;
+  if (!electricalDataValid || (dhtSelected && !temperatureDataValid)) {
     autoTripLatched = true;
     normalSinceMs = 0;
     setRelayOutput(false, "SENSOR_INVALID_SAFE_OFF");
@@ -354,15 +387,22 @@ void evaluateAutomaticRelay() {
 
   bool alarmActive = false;
   String reason = "";
+  auto addReason = [&](const char* label) {
+    if (reason.length()) reason += "+";
+    reason += label;
+    alarmActive = true;
+  };
 
-  if (relayConfig.alarmCurrentMaxEnabled && currentA > relayConfig.maxCurrentA) {
-    alarmActive = true;
-    reason = "ALARM_CURRENT_MAX";
-  }
-  if (relayConfig.alarmTemperatureMaxEnabled && temperatureC > relayConfig.maxTemperatureC) {
-    alarmActive = true;
-    reason = reason.length() ? reason + "+ALARM_TEMPERATURE_MAX" : "ALARM_TEMPERATURE_MAX";
-  }
+  if (relayConfig.alarmVoltageMinEnabled && voltageV < relayConfig.minVoltageV) addReason("VOLTAGE_LOW");
+  if (relayConfig.alarmVoltageMaxEnabled && voltageV > relayConfig.maxVoltageV) addReason("VOLTAGE_HIGH");
+  if (relayConfig.alarmCurrentMaxEnabled && currentA > relayConfig.maxCurrentA) addReason("CURRENT_HIGH");
+  if (relayConfig.alarmPowerMaxEnabled && powerW > relayConfig.maxPowerW) addReason("POWER_HIGH");
+  if (relayConfig.alarmFrequencyMinEnabled && frequencyHz < relayConfig.minFrequencyHz) addReason("FREQUENCY_LOW");
+  if (relayConfig.alarmFrequencyMaxEnabled && frequencyHz > relayConfig.maxFrequencyHz) addReason("FREQUENCY_HIGH");
+  if (relayConfig.alarmPowerFactorMinEnabled && powerFactor < relayConfig.minPowerFactor) addReason("POWER_FACTOR_LOW");
+  if (relayConfig.alarmTemperatureMaxEnabled && temperatureC > relayConfig.maxTemperatureC) addReason("TEMPERATURE_HIGH");
+  if (relayConfig.alarmHumidityMinEnabled && humidityPct < relayConfig.minHumidityPct) addReason("HUMIDITY_LOW");
+  if (relayConfig.alarmHumidityMaxEnabled && humidityPct > relayConfig.maxHumidityPct) addReason("HUMIDITY_HIGH");
 
   if (alarmActive) {
     autoTripLatched = true;
@@ -371,7 +411,7 @@ void evaluateAutomaticRelay() {
     return;
   }
 
-  // A stable timer is required both after a trip and after safe startup.
+  // The full selected alarm set must remain normal continuously before recovery.
   if (normalSinceMs == 0) normalSinceMs = millis();
   const uint32_t stableMs = (uint32_t)relayConfig.recoverStableSeconds * 1000UL;
   const bool stable = (millis() - normalSinceMs) >= stableMs;
