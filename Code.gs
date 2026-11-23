@@ -606,26 +606,33 @@ function doPost(e) {
 }
 
 
-const RELAY_SHEETS_={commands:['Perintah_Relay',['commandId','customerId','meterId','mode','desiredState','reason','createdAt','createdBy','status','ackAt','actualState','detail']],events:['Log_Relay',['timestamp','customerId','meterId','event','state','reason','source','detail']],config:['Konfigurasi_Relay',['customerId','enabled','mode','alarmCurrentMaxEnabled','alarmTemperatureMaxEnabled','maxCurrentA','maxTemperatureC','autoRecover','recoverStableSeconds','updatedAt','updatedBy']]};
+const RELAY_SHEETS_={commands:['Perintah_Relay',['commandId','customerId','meterId','mode','desiredState','reason','createdAt','createdBy','status','ackAt','actualState','detail']],events:['Log_Relay',['timestamp','customerId','meterId','event','state','reason','source','detail']],config:['Konfigurasi_Relay',['customerId','enabled','mode','alarmCurrentMaxEnabled','alarmTemperatureMaxEnabled','maxCurrentA','maxTemperatureC','autoRecover','recoverStableSeconds','updatedAt','updatedBy','alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled']]};
 function ensureRelaySheets_(){const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);Object.keys(RELAY_SHEETS_).forEach(k=>{const[n,h]=RELAY_SHEETS_[k];let sh=ss.getSheetByName(n);if(!sh){sh=ss.insertSheet(n);sh.getRange(1,1,1,h.length).setValues([h]);sh.setFrozenRows(1)}else{const ex=sh.getRange(1,1,1,Math.max(1,sh.getLastColumn())).getValues()[0].map(String);h.forEach(x=>{if(!ex.includes(x))sh.getRange(1,sh.getLastColumn()+1).setValue(x)})}})}
 function relayRows_(k){const[n,h]=RELAY_SHEETS_[k],sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(n);if(!sh||sh.getLastRow()<2)return[];return sh.getRange(2,1,sh.getLastRow()-1,h.length).getValues().map(r=>Object.fromEntries(h.map((x,i)=>[x,r[i]])))}
 function relayLog_(c,m,e,s,r,source,d){SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.events[0]).appendRow([new Date(),c,m,e,s,r,source,d||''])}
 function latestRelayCommand_(c,m){return relayRows_('commands').filter(r=>String(r.customerId)===String(c)&&String(r.meterId)===String(m)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null}
+const RELAY_ALARM_FLAG_KEYS_=['alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmCurrentMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmTemperatureMaxEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled'];
 function relayConfigFor_(customerId){
  ensureRelaySheets_();
- const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.config[0]);
  const row=relayRows_('config').find(x=>String(x.customerId)===String(customerId));
- const d={enabled:false,mode:'MANUAL',alarmCurrentMaxEnabled:false,alarmTemperatureMaxEnabled:false,maxCurrentA:4,maxTemperatureC:30,autoRecover:true,recoverStableSeconds:60};
- if(!row){sh.appendRow([customerId,d.enabled,d.mode,d.alarmCurrentMaxEnabled,d.alarmTemperatureMaxEnabled,d.maxCurrentA,d.maxTemperatureC,d.autoRecover,d.recoverStableSeconds,new Date(),'SYSTEM_DEFAULT']);return d;}
- return {enabled:truthy_(row.enabled),mode:String(row.mode||'MANUAL'),alarmCurrentMaxEnabled:truthy_(row.alarmCurrentMaxEnabled),alarmTemperatureMaxEnabled:truthy_(row.alarmTemperatureMaxEnabled),maxCurrentA:Number(row.maxCurrentA)||4,maxTemperatureC:Number(row.maxTemperatureC)||30,autoRecover:truthy_(row.autoRecover),recoverStableSeconds:Number(row.recoverStableSeconds)||60};
+ const alarm=alarmConfigFor_(customerId);
+ const d={enabled:false,mode:'MANUAL',autoRecover:true,recoverStableSeconds:60};
+ const cfg={enabled:row?truthy_(row.enabled):d.enabled,mode:row?String(row.mode||'MANUAL'):d.mode,autoRecover:row?truthy_(row.autoRecover):d.autoRecover,recoverStableSeconds:row?Number(row.recoverStableSeconds)||60:d.recoverStableSeconds};
+ RELAY_ALARM_FLAG_KEYS_.forEach(k=>cfg[k]=row?truthy_(row[k]):false);
+ ['minVoltageV','maxVoltageV','maxCurrentA','maxPowerW','minFrequencyHz','maxFrequencyHz','minPowerFactor','maxTemperatureC','minHumidityPct','maxHumidityPct'].forEach(k=>cfg[k]=Number(alarm[k]));
+ if(!row){const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.config[0]);const headers=RELAY_SHEETS_.config[1];const values=headers.map(k=>k==='customerId'?customerId:k==='enabled'?false:k==='mode'?'MANUAL':k==='autoRecover'?true:k==='recoverStableSeconds'?60:k==='maxCurrentA'?alarm.maxCurrentA:k==='maxTemperatureC'?alarm.maxTemperatureC:k==='updatedAt'?new Date():k==='updatedBy'?'SYSTEM_DEFAULT':false);sh.appendRow(values);}
+ return cfg;
 }
 function saveRelayConfig_(session,payload,targetId){
  const u=validateSession_(session);if(!u.ok)return u;if(u.role!=='ADMIN')return{ok:false,message:'Akses administrator diperlukan untuk konfigurasi relay.'};
  const id=String(targetId||'').trim(),customer=getRows_('Pelanggan').find(x=>String(x.customerId)===id&&truthy_(x.active));if(!customer)return{ok:false,message:'Pelanggan tidak ditemukan.'};
- const p=payload||{},v={enabled:truthy_(p.enabled),mode:String(p.mode||'MANUAL'),alarmCurrentMaxEnabled:truthy_(p.alarmCurrentMaxEnabled),alarmTemperatureMaxEnabled:truthy_(p.alarmTemperatureMaxEnabled),maxCurrentA:Number(p.maxCurrentA),maxTemperatureC:Number(p.maxTemperatureC),autoRecover:truthy_(p.autoRecover),recoverStableSeconds:Number(p.recoverStableSeconds)};
- if(!['MANUAL','AUTO'].includes(v.mode)||!Number.isFinite(v.maxCurrentA)||v.maxCurrentA<=0||v.maxCurrentA>1000||!Number.isFinite(v.maxTemperatureC)||v.maxTemperatureC<0||v.maxTemperatureC>50||!Number.isInteger(v.recoverStableSeconds)||v.recoverStableSeconds<10||v.recoverStableSeconds>600)return{ok:false,message:'Pengaturan relay tidak valid.'};
- if(v.mode==='AUTO'&&!v.alarmCurrentMaxEnabled&&!v.alarmTemperatureMaxEnabled)return{ok:false,message:'Pilih minimal satu alarm pemicu sebelum mengaktifkan mode otomatis.'};
- ensureRelaySheets_();const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.config[0]),rows=relayRows_('config'),i=rows.findIndex(x=>String(x.customerId)===id),now=new Date(),values=[id,v.enabled,v.mode,v.alarmCurrentMaxEnabled,v.alarmTemperatureMaxEnabled,v.maxCurrentA,v.maxTemperatureC,v.autoRecover,v.recoverStableSeconds,now,u.username];
+ const p=payload||{},v={enabled:truthy_(p.enabled),mode:String(p.mode||'MANUAL'),autoRecover:truthy_(p.autoRecover),recoverStableSeconds:Number(p.recoverStableSeconds)};
+ RELAY_ALARM_FLAG_KEYS_.forEach(k=>v[k]=truthy_(p[k]));
+ if(!['MANUAL','AUTO'].includes(v.mode)||!Number.isInteger(v.recoverStableSeconds)||v.recoverStableSeconds<10||v.recoverStableSeconds>600)return{ok:false,message:'Pengaturan relay tidak valid.'};
+ if(v.mode==='AUTO'&&!RELAY_ALARM_FLAG_KEYS_.some(k=>v[k]))return{ok:false,message:'Pilih minimal satu alarm pemicu sebelum mengaktifkan mode otomatis.'};
+ const alarm=alarmConfigFor_(id);v.maxCurrentA=alarm.maxCurrentA;v.maxTemperatureC=alarm.maxTemperatureC;
+ ensureRelaySheets_();const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.config[0]),rows=relayRows_('config'),i=rows.findIndex(x=>String(x.customerId)===id),now=new Date();
+ const values=RELAY_SHEETS_.config[1].map(k=>k==='customerId'?id:k==='enabled'?v.enabled:k==='mode'?v.mode:k==='autoRecover'?v.autoRecover:k==='recoverStableSeconds'?v.recoverStableSeconds:k==='maxCurrentA'?v.maxCurrentA:k==='maxTemperatureC'?v.maxTemperatureC:k==='updatedAt'?now:k==='updatedBy'?u.username: v[k]===undefined?false:v[k]);
  if(i<0)sh.appendRow(values);else sh.getRange(i+2,1,1,values.length).setValues([values]);
  relayLog_(id,customer.meterId,'CONFIG_UPDATED',v.mode,'Konfigurasi relay diperbarui','WEBSITE','');
  return{ok:true,config:v,message:'Konfigurasi relay tersimpan.'};
