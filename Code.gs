@@ -513,11 +513,67 @@ function ensureTemperatureSheet_(spreadsheet) {
   return sheet;
 }
 
+function getDeviceLcdDashboard_(body) {
+  const apiKey = String(body.apiKey || '');
+  if (!safeEqual_(apiKey, CONFIG.DEVICE_API_KEY) ||
+      CONFIG.DEVICE_API_KEY.indexOf('REPLACE_') === 0) {
+    return {ok:false, message:'Unauthorized device'};
+  }
+
+  const customerId = String(body.customerId || '').trim();
+  const deviceId = String(body.deviceId || '').trim();
+  if (!customerId || !deviceId) return {ok:false, message:'Missing customerId/deviceId'};
+
+  const customer = getRows_('Pelanggan').find(c =>
+    String(c.customerId) === customerId &&
+    String(c.meterId) === deviceId && truthy_(c.active));
+  if (!customer) return {ok:false, message:'Unknown device/customer'};
+
+  const now = new Date();
+  const allReadings = getRows_('Data_Listrik')
+    .filter(r => String(r.customerId) === customerId && String(r.meterId) === deviceId)
+    .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const latest = allReadings[0] || null;
+  const calcReadings = readingsForCalculation_(allReadings, customerId);
+  const monthKey = Utilities.formatDate(now, CONFIG.TIME_ZONE, 'yyyy-MM');
+  const monthStart = Utilities.parseDate(monthKey + '-01 00:00:00',
+    CONFIG.TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+  const energyMonthKwh = energyBetween_(calcReadings, monthStart.getTime(), now.getTime());
+  const tariffRpPerKwh = Number(customer.tariffRpPerKwh || CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
+  const costMonthRp = energyMonthKwh * tariffRpPerKwh;
+
+  const temperatureRows = getRows_('Data_Suhu')
+    .filter(r => String(r.customerId) === customerId && String(r.meterId) === deviceId)
+    .sort((a,b) => new Date(b.receivedAt || b.timestamp) - new Date(a.receivedAt || a.timestamp));
+  const latestTemperature = temperatureRows[0] || null;
+  const lastSeen = latest ? new Date(latest.receivedAt || latest.timestamp) : null;
+  const online = !!(lastSeen && Number.isFinite(lastSeen.getTime()) &&
+    (now.getTime() - lastSeen.getTime()) / 60000 <= CONFIG.MAX_AGE_MINUTES_ONLINE);
+
+  return {
+    ok:true,
+    customerId:customerId,
+    deviceId:deviceId,
+    tariffRpPerKwh:tariffRpPerKwh,
+    energyMonthKwh:energyMonthKwh,
+    costMonthRp:costMonthRp,
+    latest:latest ? normalizeReading_(latest) : null,
+    temperature:latestTemperature ? {
+      temperatureC:Number(latestTemperature.temperatureC || 0),
+      humidityPct:Number(latestTemperature.humidityPct || 0),
+      timestamp:new Date(latestTemperature.timestamp).toISOString()
+    } : null,
+    online:online,
+    serverTime:now.toISOString()
+  };
+}
+
 function doPost(e) {
   try {
     assertConfigured_();
     const body=JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (body.fn === 'getDeviceConfig') return json_(getDeviceAlarmConfig_(body));
+    if (body.fn === 'getLcdDashboard') return json_(getDeviceLcdDashboard_(body));
     if (body.relayAction) return json_(relayDeviceApi_(body));
     if (body.fn) return json_(handleApi_(body)); // permintaan dari website
 
