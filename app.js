@@ -448,7 +448,7 @@ $('saveRelayConfig')?.addEventListener('click',async()=>{
 $('relaySendCommand')?.addEventListener('click',async()=>{
  const id=relaySelectedCustomer(),state=$('relayManualState').value;
  if(!$('relayEnabled').checked||$('relayMode').value!=='MANUAL'){toast('Aktifkan relay dan pilih mode MANUAL terlebih dahulu.');return}
- if(state==='ON'&&!confirm('Kirim permintaan logis ON untuk CH1? Firmware saat ini tetap mengunci output GPIO.'))return;
+ if(state==='ON'&&!confirm('Kirim perintah ON ke ESP32? Pastikan area dan perangkat yang dikendalikan aman.'))return;
  const b=$('relaySendCommand');b.disabled=true;b.textContent='Mengirim…';
  try{const r=await api('setRelayCommand',session,'MANUAL',state,id);if(!r?.ok)throw Error(r?.message||'Gagal mengirim perintah');toast(r.message||'Perintah terkirim');await loadRelayStatus()}
  catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Kirim permintaan manual';syncRelayControls()}
