@@ -125,7 +125,7 @@ function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
   if(p!=='history'&&selId){selId='';$('historySearch').value=''}
-  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings')loadAlarmSettings().catch(e=>toast(e.message||e))}
+  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e));loadRelaySettings().catch(e=>toast(e.message||e))}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
@@ -347,7 +347,7 @@ $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...historyRows().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
   const csv=q.map(r=>r.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV diunduh')};
-setInterval(()=>{if(session)refresh().catch(()=>{})},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
+setInterval(()=>{if(session){refresh().catch(()=>{});if($('page-alarmSettings')?.classList.contains('active'))loadRelayStatus().catch(()=>{})}},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
 
  
 // ---- Pengajuan penambahan daya
@@ -373,6 +373,71 @@ $('resetCalculationPeriod').onclick=async()=>{
   }catch(err){toast(err.message||String(err))}
 };
 $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan menghapus riwayat pembacaan dan rekap pemakaian akun Anda dari sistem. Tindakan ini tidak dapat dibatalkan. Lanjutkan?'))return;if(!confirm('Konfirmasi terakhir: hapus semua data pembacaan listrik milik akun Anda?'))return;try{const res=await api('resetCustomerData',session);if(!res?.ok)throw Error(res?.message||'Reset gagal');toast('Data pembacaan berhasil direset');await refresh()}catch(err){toast(err.message||String(err))}};
+
+
+function relaySelectedCustomer(){return admin()?String($('relayCustomer')?.value||''):String(session?.customerId||'')}
+function renderRelayStatus(row){
+ if(!row)return;
+ $('relayActualState').textContent=row.actualState||'UNKNOWN';
+ $('relayDesiredState').textContent=row.desiredState||'OFF';
+ $('relayCommandStatus').textContent=row.commandStatus||'NO_COMMAND';
+ $('relayModeBadge').textContent=(row.enabled?'AKTIF · ':'NONAKTIF · ')+(row.mode||'MANUAL');
+ $('relayReason').textContent=(row.reason||'Belum ada laporan perangkat')+(row.updatedAt?' · '+new Date(row.updatedAt).toLocaleString('id-ID'):'');
+}
+async function loadRelaySettings(){
+ if(!session)return;
+ const r=await api('getRelayStatus',session,admin()?undefined:session.customerId);
+ if(!r?.ok)throw Error(r?.message||'Gagal memuat konfigurasi relay');
+ const rows=Array.isArray(r.rows)?r.rows:[];
+ if(admin()){
+  const sel=$('relayCustomer'),old=sel.value;
+  sel.innerHTML=rows.map(x=>'<option value="'+esc(x.customerId)+'">'+esc(x.customerId+' — '+x.meterId)+'</option>').join('');
+  if(rows.some(x=>x.customerId===old))sel.value=old;
+ }
+ const row=rows.find(x=>x.customerId===relaySelectedCustomer())||rows[0];
+ if(!row)return;
+ const cfg=row.relayConfig||{};
+ $('relayEnabled').checked=!!cfg.enabled;
+ $('relayMode').value=cfg.mode||'MANUAL';
+ $('relayAlarmCurrent').checked=!!cfg.alarmCurrentMaxEnabled;
+ $('relayAlarmTemperature').checked=!!cfg.alarmTemperatureMaxEnabled;
+ $('relayMaxCurrent').value=cfg.maxCurrentA??4;
+ $('relayMaxTemperature').value=cfg.maxTemperatureC??30;
+ $('relayAutoRecover').checked=cfg.autoRecover!==false;
+ $('relayStableSeconds').value=cfg.recoverStableSeconds??60;
+ $('relayConfigStatus').textContent='Konfigurasi tersimpan · mode '+(cfg.mode||'MANUAL')+' · pemulihan '+(cfg.autoRecover===false?'manual':'otomatis');
+ renderRelayStatus(row);syncRelayControls();
+}
+async function loadRelayStatus(){
+ if(!session)return;
+ const r=await api('getRelayStatus',session,relaySelectedCustomer());
+ if(!r?.ok)throw Error(r?.message||'Gagal memuat status relay');
+ const row=(r.rows||[])[0];if(row)renderRelayStatus(row);
+}
+function syncRelayControls(){
+ const automatic=$('relayMode').value==='AUTO';
+ const manual=$('relayManualState'),btn=$('relaySendCommand');
+ if(manual)manual.disabled=automatic;
+ if(btn)btn.disabled=automatic||!$('relayEnabled').checked;
+}
+$('relayMode')?.addEventListener('change',syncRelayControls);
+$('relayEnabled')?.addEventListener('change',syncRelayControls);
+$('relayCustomer')?.addEventListener('change',()=>loadRelaySettings().catch(e=>toast(e.message||e)));
+$('saveRelayConfig')?.addEventListener('click',async()=>{
+ const id=relaySelectedCustomer();if(!id){toast('Pilih pelanggan perangkat terlebih dahulu.');return}
+ const payload={enabled:$('relayEnabled').checked,mode:$('relayMode').value,alarmCurrentMaxEnabled:$('relayAlarmCurrent').checked,alarmTemperatureMaxEnabled:$('relayAlarmTemperature').checked,maxCurrentA:Number($('relayMaxCurrent').value),maxTemperatureC:Number($('relayMaxTemperature').value),autoRecover:$('relayAutoRecover').checked,recoverStableSeconds:Number($('relayStableSeconds').value)};
+ const b=$('saveRelayConfig');b.disabled=true;b.textContent='Menyimpan…';
+ try{const r=await api('saveRelayConfig',session,payload,id);if(!r?.ok)throw Error(r?.message||'Gagal menyimpan konfigurasi');toast(r.message||'Konfigurasi tersimpan');$('relayConfigStatus').textContent='Tersimpan '+new Date().toLocaleString('id-ID');await loadRelaySettings()}
+ catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Simpan konfigurasi relay'}
+});
+$('relaySendCommand')?.addEventListener('click',async()=>{
+ const id=relaySelectedCustomer(),state=$('relayManualState').value;
+ if(!$('relayEnabled').checked||$('relayMode').value!=='MANUAL'){toast('Aktifkan relay dan pilih mode MANUAL terlebih dahulu.');return}
+ if(state==='ON'&&!confirm('Nyalakan output prototipe tegangan rendah CH1? Pastikan tidak terhubung ke instalasi listrik PLN.'))return;
+ const b=$('relaySendCommand');b.disabled=true;b.textContent='Mengirim…';
+ try{const r=await api('setRelayCommand',session,'MANUAL',state,id);if(!r?.ok)throw Error(r?.message||'Gagal mengirim perintah');toast(r.message||'Perintah terkirim');await loadRelayStatus()}
+ catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Kirim perintah manual';syncRelayControls()}
+});
 
 function syncAlarmToggleUI(){
  document.querySelectorAll('.mini-toggle').forEach(label=>{
