@@ -223,55 +223,94 @@ bool postJson(const String& payload, String& response) {
     return false;
   }
 
-  WiFiClientSecure secureClient;
-  // Google Apps Script memakai HTTPS dan redirect ke host Google lain.
-  // setInsecure dipakai agar koneksi tidak gagal karena CA bundle belum dipasang.
-  // Gunakan hanya pada jaringan tepercaya; validasi sertifikat dapat ditambahkan kemudian.
-  secureClient.setInsecure();
-  secureClient.setTimeout(HTTP_TIMEOUT_MS);
+  // Apps Script menerima POST di /exec lalu mengalihkan hasil ContentService
+  // ke script.googleusercontent.com. Pada redirect 302, endpoint hasil harus
+  // diambil dengan GET, bukan POST ulang. Setiap hop memakai TLS client baru.
+  String currentUrl = String(APPS_SCRIPT_URL);
+  bool sendPost = true;
+  const char* redirectHeaders[] = {"Location"};
 
-  HTTPClient http;
-  http.setConnectTimeout(HTTP_TIMEOUT_MS);
-  http.setTimeout(HTTP_TIMEOUT_MS);
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-  http.setReuse(false);
+  for (uint8_t hop = 0; hop < 5; hop++) {
+    WiFiClientSecure secureClient;
+    secureClient.setInsecure();
+    secureClient.setTimeout(HTTP_TIMEOUT_MS);
 
-  if (!http.begin(secureClient, APPS_SCRIPT_URL)) {
-    Serial.println("[HTTP] Gagal membuka URL Apps Script. Periksa URL dan TLS.");
-    return false;
-  }
+    HTTPClient http;
+    http.setConnectTimeout(HTTP_TIMEOUT_MS);
+    http.setTimeout(HTTP_TIMEOUT_MS);
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    http.setReuse(false);
+    http.collectHeaders(redirectHeaders, 1);
 
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Connection", "close");
-  const int statusCode = http.POST(payload);
-  if (statusCode > 0) {
-    response = http.getString();
-    Serial.printf("[HTTP] Respons server: %d\n", statusCode);
-  } else {
-    Serial.printf("[HTTP] POST gagal (%d): %s\n",
-      statusCode, http.errorToString(statusCode).c_str());
-  }
-  http.end();
-
-  if (statusCode < 200 || statusCode >= 300) {
-    if (response.length()) {
-      String preview = response.substring(0, 180);
-      preview.replace("\n", " ");
-      preview.replace("\r", " ");
-      Serial.println("[HTTP] Body awal: " + preview);
-    }
-    return false;
-  }
-  if (response.length()) {
-    DynamicJsonDocument responseDoc(2048);
-    if (deserializeJson(responseDoc, response) == DeserializationError::Ok &&
-        responseDoc.containsKey("ok") && !(responseDoc["ok"] | false)) {
-      Serial.println("[HTTP] API menolak permintaan: " +
-        String((const char*)(responseDoc["message"] | "unknown error")));
+    if (!http.begin(secureClient, currentUrl)) {
+      Serial.println("[HTTP] Gagal membuka URL hop " + String(hop) + ".");
       return false;
     }
+
+    http.addHeader("Connection", "close");
+    int statusCode;
+    if (sendPost) {
+      http.addHeader("Content-Type", "application/json");
+      statusCode = http.POST(payload);
+      Serial.println("[HTTP] POST ke endpoint Apps Script.");
+    } else {
+      statusCode = http.GET();
+      Serial.println("[HTTP] GET ke URL hasil redirect.");
+    }
+
+    String location = http.header("Location");
+    if (statusCode > 0) {
+      response = http.getString();
+      Serial.printf("[HTTP] Hop %u respons: %d\n", hop + 1, statusCode);
+    } else {
+      Serial.printf("[HTTP] Hop %u gagal (%d): %s\n",
+        hop + 1, statusCode, http.errorToString(statusCode).c_str());
+      http.end();
+      return false;
+    }
+    http.end();
+
+    if (statusCode == 301 || statusCode == 302 || statusCode == 303 ||
+        statusCode == 307 || statusCode == 308) {
+      if (!location.length()) {
+        Serial.println("[HTTP] Redirect tanpa header Location.");
+        return false;
+      }
+      if (location.indexOf("script.google.com/macros/s/") >= 0 &&
+          location.endsWith("/exec")) {
+        Serial.println("[HTTP] Redirect kembali ke /exec terdeteksi; hentikan loop.");
+        return false;
+      }
+      Serial.println("[HTTP] Mengikuti redirect hop " + String(hop + 1));
+      currentUrl = location;
+      sendPost = false; // Hasil ContentService diambil dengan GET.
+      continue;
+    }
+
+    if (statusCode < 200 || statusCode >= 300) {
+      if (response.length()) {
+        String preview = response.substring(0, 220);
+        preview.replace("\n", " ");
+        preview.replace("\r", " ");
+        Serial.println("[HTTP] Body awal: " + preview);
+      }
+      return false;
+    }
+
+    if (response.length()) {
+      DynamicJsonDocument responseDoc(2048);
+      if (deserializeJson(responseDoc, response) == DeserializationError::Ok &&
+          responseDoc.containsKey("ok") && !(responseDoc["ok"] | false)) {
+        Serial.println("[HTTP] API menolak permintaan: " +
+          String((const char*)(responseDoc["message"] | "unknown error")));
+        return false;
+      }
+    }
+    return true;
   }
-  return true;
+
+  Serial.println("[HTTP] Batas redirect 5 hop terlampaui.");
+  return false;
 }
 
 String makeDeviceBaseJson(const char* action) {
