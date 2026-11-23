@@ -71,9 +71,14 @@ Pin:
 
 LCD address default \`0x27\`; ubah ke \`0x3F\` bila hasil I2C scanner menunjukkan alamat tersebut. Pastikan level tegangan pull-up I2C aman untuk ESP32.
 
-## 5. Logika kontrol
+## 5. Kunci aktuasi output dan logika kontrol
 
-- Boot: CH1 dipaksa OFF.
+Di firmware tersedia konstanta `ENABLE_LOW_VOLTAGE_RELAY_TEST` yang default-nya `false`. Pada kondisi default, output GPIO25 ditahan pada keadaan OFF; permintaan ON maupun mode AUTO tidak menggerakkan koil. Sinkronisasi konfigurasi, perintah, heartbeat, dan status output tetap berjalan. Konstanta tersebut bukan opsi untuk mengaktifkan modul ketika terhubung ke instalasi PLN.
+
+
+
+- Boot: GPIO25 dipaksa ke level OFF.
+- Default firmware: aktuasi output dikunci; dashboard hanya menguji komunikasi, antrean perintah, dan pelaporan output.
 - Kendali nonaktif: CH1 dipaksa OFF.
 - Mode MANUAL: perintah ON/OFF dari website admin diproses melalui antrean dan dikonfirmasi ESP32.
 - Mode AUTO: firmware mengevaluasi hanya alarm yang dipilih dalam panel relay. Tersedia pilihan tegangan rendah/tinggi, arus tinggi, daya tinggi, frekuensi rendah/tinggi, PF rendah, suhu tinggi, dan kelembapan rendah/tinggi.
