@@ -399,10 +399,8 @@ async function loadRelaySettings(){
  const cfg=row.relayConfig||{};
  $('relayEnabled').checked=!!cfg.enabled;
  $('relayMode').value=cfg.mode||'MANUAL';
- $('relayAlarmCurrent').checked=!!cfg.alarmCurrentMaxEnabled;
- $('relayAlarmTemperature').checked=!!cfg.alarmTemperatureMaxEnabled;
- $('relayMaxCurrent').value=cfg.maxCurrentA??4;
- $('relayMaxTemperature').value=cfg.maxTemperatureC??30;
+ const flags={relayAlarmVoltageMin:'alarmVoltageMinEnabled',relayAlarmVoltageMax:'alarmVoltageMaxEnabled',relayAlarmCurrent:'alarmCurrentMaxEnabled',relayAlarmPower:'alarmPowerMaxEnabled',relayAlarmFrequencyMin:'alarmFrequencyMinEnabled',relayAlarmFrequencyMax:'alarmFrequencyMaxEnabled',relayAlarmPF:'alarmPowerFactorMinEnabled',relayAlarmTemperature:'alarmTemperatureMaxEnabled',relayAlarmHumidityMin:'alarmHumidityMinEnabled',relayAlarmHumidityMax:'alarmHumidityMaxEnabled'};
+ Object.entries(flags).forEach(([id,key])=>{const el=$(id);if(el)el.checked=!!cfg[key]});
  $('relayAutoRecover').checked=cfg.autoRecover!==false;
  $('relayStableSeconds').value=cfg.recoverStableSeconds??60;
  $('relayConfigStatus').textContent='Konfigurasi tersimpan · mode '+(cfg.mode||'MANUAL')+' · pemulihan '+(cfg.autoRecover===false?'manual':'otomatis');
@@ -425,7 +423,7 @@ $('relayEnabled')?.addEventListener('change',syncRelayControls);
 $('relayCustomer')?.addEventListener('change',()=>loadRelaySettings().catch(e=>toast(e.message||e)));
 $('saveRelayConfig')?.addEventListener('click',async()=>{
  const id=relaySelectedCustomer();if(!id){toast('Pilih pelanggan perangkat terlebih dahulu.');return}
- const payload={enabled:$('relayEnabled').checked,mode:$('relayMode').value,alarmCurrentMaxEnabled:$('relayAlarmCurrent').checked,alarmTemperatureMaxEnabled:$('relayAlarmTemperature').checked,maxCurrentA:Number($('relayMaxCurrent').value),maxTemperatureC:Number($('relayMaxTemperature').value),autoRecover:$('relayAutoRecover').checked,recoverStableSeconds:Number($('relayStableSeconds').value)};
+ const payload={enabled:$('relayEnabled').checked,mode:$('relayMode').value,alarmVoltageMinEnabled:$('relayAlarmVoltageMin').checked,alarmVoltageMaxEnabled:$('relayAlarmVoltageMax').checked,alarmCurrentMaxEnabled:$('relayAlarmCurrent').checked,alarmPowerMaxEnabled:$('relayAlarmPower').checked,alarmFrequencyMinEnabled:$('relayAlarmFrequencyMin').checked,alarmFrequencyMaxEnabled:$('relayAlarmFrequencyMax').checked,alarmPowerFactorMinEnabled:$('relayAlarmPF').checked,alarmTemperatureMaxEnabled:$('relayAlarmTemperature').checked,alarmHumidityMinEnabled:$('relayAlarmHumidityMin').checked,alarmHumidityMaxEnabled:$('relayAlarmHumidityMax').checked,autoRecover:$('relayAutoRecover').checked,recoverStableSeconds:Number($('relayStableSeconds').value)};
  const b=$('saveRelayConfig');b.disabled=true;b.textContent='Menyimpan…';
  try{const r=await api('saveRelayConfig',session,payload,id);if(!r?.ok)throw Error(r?.message||'Gagal menyimpan konfigurasi');toast(r.message||'Konfigurasi tersimpan');$('relayConfigStatus').textContent='Tersimpan '+new Date().toLocaleString('id-ID');await loadRelaySettings()}
  catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Simpan konfigurasi relay'}
@@ -438,7 +436,6 @@ $('relaySendCommand')?.addEventListener('click',async()=>{
  try{const r=await api('setRelayCommand',session,'MANUAL',state,id);if(!r?.ok)throw Error(r?.message||'Gagal mengirim perintah');toast(r.message||'Perintah terkirim');await loadRelayStatus()}
  catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Kirim perintah manual';syncRelayControls()}
 });
-
 function syncAlarmToggleUI(){
  document.querySelectorAll('.mini-toggle').forEach(label=>{
   const input=label.querySelector('input[type="checkbox"]'),state=label.querySelector('small'),field=label.closest('.alarm-threshold-field');
