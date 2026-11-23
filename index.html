@@ -119,29 +119,44 @@
     <section id="page-alarmSettings" class="section">
       
       <div class="panel relay-panel">
-       <div class="panel-head"><div><h3>Kontrol Relay CH1</h3><p>Atur kendali relay perangkat milik akun ini. Status output dilaporkan langsung oleh ESP32.</p></div><span id="relayModeBadge" class="badge amber">SAFE OFF</span></div>
-       <div class="field admin-only hidden"><label for="relayCustomer">Pelanggan perangkat</label><select id="relayCustomer"></select></div>
-       <div class="relay-status-grid"><article class="relay-status-card"><small>Status output GPIO25 dari ESP32</small><strong id="relayActualState">UNKNOWN</strong></article><article class="relay-status-card"><small>Keputusan berdasarkan PZEM</small><strong id="relayDecisionState">UNKNOWN</strong></article><article class="relay-status-card"><small>Perintah terakhir</small><strong id="relayDesiredState">OFF</strong></article><article class="relay-status-card"><small>Status antrean</small><strong id="relayCommandStatus">NO_COMMAND</strong></article></div><div class="relay-status-card relay-decision-detail"><small>Alasan keputusan ESP32</small><strong id="relayDecisionReason">Menunggu pembacaan PZEM</strong></div><div class="relay-pzem-grid"><article class="relay-status-card"><small>Tegangan</small><strong id="relayPzemVoltage">— V</strong></article><article class="relay-status-card"><small>Arus</small><strong id="relayPzemCurrent">— A</strong></article><article class="relay-status-card"><small>Daya</small><strong id="relayPzemPower">— W</strong></article><article class="relay-status-card"><small>Energi</small><strong id="relayPzemEnergy">— kWh</strong></article><article class="relay-status-card"><small>Frekuensi</small><strong id="relayPzemFrequency">— Hz</strong></article><article class="relay-status-card"><small>Power Factor</small><strong id="relayPzemPF">—</strong></article></div>
-       <div class="relay-config-grid">
-        <label class="relay-check"><input id="relayEnabled" type="checkbox"><span><b>Aktifkan kendali relay</b><small>Jika dinonaktifkan, firmware menahan output CH1 OFF.</small></span></label>
-        <label class="field"><span>Mode operasi</span><select id="relayMode"><option value="MANUAL">Manual</option><option value="AUTO">Otomatis berdasarkan alarm</option></select></label>
-        <label class="relay-check"><input id="relayAlarmVoltageMin" type="checkbox"><span><b>Tegangan di bawah batas minimum</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmVoltageMax" type="checkbox"><span><b>Tegangan di atas batas maksimum</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmCurrent" type="checkbox"><span><b>Arus maksimum terlampaui</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmPower" type="checkbox"><span><b>Daya maksimum terlampaui</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmFrequencyMin" type="checkbox"><span><b>Frekuensi di bawah batas minimum</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmFrequencyMax" type="checkbox"><span><b>Frekuensi di atas batas maksimum</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmPF" type="checkbox"><span><b>Power factor di bawah batas minimum</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmTemperature" type="checkbox"><span><b>Suhu maksimum terlampaui</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmHumidityMin" type="checkbox"><span><b>Kelembapan di bawah batas minimum</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAlarmHumidityMax" type="checkbox"><span><b>Kelembapan di atas batas maksimum</b><small>Ambang mengikuti Pengaturan Alarm.</small></span></label>
-        <label class="relay-check"><input id="relayAutoRecover" type="checkbox" checked><span><b>Pemulihan otomatis</b><small>Relay kembali ON setelah semua alarm terpilih normal stabil.</small></span></label>
-        <label class="field"><span>Waktu kondisi stabil (detik)</span><input id="relayStableSeconds" type="number" min="10" max="600" step="5" value="60"></label>
-       </div>
-       <div class="relay-actions"><button class="primary" id="saveRelayConfig" type="button">Simpan konfigurasi relay</button><label class="field"><span>Permintaan manual CH1</span><select id="relayManualState"><option value="OFF">OFF</option><option value="ON">ON</option></select></label><button class="secondary" id="relaySendCommand" type="button">Kirim perintah relay</button></div>
-       <p id="relayReason" class="sub">Belum ada laporan perangkat.</p><p id="relayConfigStatus" class="sub">Konfigurasi relay belum dimuat.</p>
-       <p class="relay-safety-note">Mode MANUAL menerima perintah ON/OFF dari dashboard. Mode AUTO mengaktifkan output saat seluruh parameter alarm terpilih berada dalam kondisi normal, dan mematikan output jika salah satu alarm terpicu. Status adalah laporan output GPIO25 dari ESP32.</p>
-      </div>
+ <div class="panel-head"><div><h3>Kontrol Relay CH1</h3><p>Kontrol langsung dan pantau status output ESP32 secara berkala.</p></div><span id="relayModeBadge" class="badge amber">MENUNGGU PERANGKAT</span></div>
+ <div class="field admin-only hidden"><label for="relayCustomer">Pelanggan perangkat</label><select id="relayCustomer"></select></div>
+ <div class="relay-compact-status">
+  <div class="relay-live-card"><div><small>Status output ESP32</small><strong id="relayActualState">UNKNOWN</strong><span id="relayReason" class="sub">Menunggu heartbeat ESP32…</span></div></div>
+  <div class="relay-live-meta"><div><small>Mode</small><strong id="relayModeText">MANUAL</strong></div><div><small>Keputusan sensor</small><strong id="relayDecisionState">UNKNOWN</strong></div><div><small>Perintah terakhir</small><strong id="relayDesiredState">OFF</strong></div><div><small>Status perintah</small><strong id="relayCommandStatus">NO_COMMAND</strong></div></div>
+ </div>
+ <div class="relay-config-grid relay-basic-config">
+  <div class="alarm-switch-card"><div><strong>Aktifkan kendali relay</strong><small>Jika OFF, ESP32 akan menahan output relay pada kondisi OFF.</small></div><label class="toggle-switch" for="relayEnabled"><input id="relayEnabled" type="checkbox"><span class="toggle-slider"></span></label></div>
+  <label class="field"><span>Mode operasi</span><select id="relayMode"><option value="MANUAL">Manual</option><option value="AUTO">Otomatis berdasarkan alarm</option></select></label>
+ </div>
+ <div id="relayManualControl" class="alarm-switch-card relay-manual-card"><div><strong>Output relay manual</strong><small id="relayManualStatus">Sakelar mengikuti status output aktual ESP32.</small></div><label class="toggle-switch" for="relayManualToggle"><input id="relayManualToggle" type="checkbox" disabled><span class="toggle-slider"></span></label></div>
+ <p id="relayAutoInfo" class="relay-auto-info hidden">Mode otomatis aktif. ESP32 mengendalikan relay berdasarkan kondisi sensor dan parameter alarm yang dipilih.</p>
+ <details class="relay-advanced"><summary>Pengaturan pemicu otomatis</summary>
+  <div class="relay-config-grid">
+   <label class="relay-check"><input id="relayAlarmVoltageMin" type="checkbox"><span><b>Tegangan di bawah batas minimum</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmVoltageMax" type="checkbox"><span><b>Tegangan di atas batas maksimum</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmCurrent" type="checkbox"><span><b>Arus maksimum terlampaui</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmPower" type="checkbox"><span><b>Daya maksimum terlampaui</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmFrequencyMin" type="checkbox"><span><b>Frekuensi di bawah batas minimum</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmFrequencyMax" type="checkbox"><span><b>Frekuensi di atas batas maksimum</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmPF" type="checkbox"><span><b>Power factor di bawah batas minimum</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmTemperature" type="checkbox"><span><b>Suhu maksimum terlampaui</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmHumidityMin" type="checkbox"><span><b>Kelembapan di bawah batas minimum</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+   <label class="relay-check"><input id="relayAlarmHumidityMax" type="checkbox"><span><b>Kelembapan di atas batas maksimum</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
+  </div>
+  <div class="relay-recovery-grid">
+   <div class="alarm-switch-card"><div><strong>Pemulihan otomatis</strong><small>Relay kembali ON setelah semua parameter normal stabil.</small></div><label class="toggle-switch" for="relayAutoRecover"><input id="relayAutoRecover" type="checkbox" checked><span class="toggle-slider"></span></label></div>
+   <label class="field"><span>Waktu kondisi stabil (detik)</span><input id="relayStableSeconds" type="number" min="10" max="600" step="5" value="60"></label>
+  </div>
+ </details>
+ <details class="relay-advanced"><summary>Data sensor terakhir</summary>
+  <div class="relay-pzem-grid">
+   <article class="relay-status-card"><small>Tegangan</small><strong id="relayPzemVoltage">— V</strong></article><article class="relay-status-card"><small>Arus</small><strong id="relayPzemCurrent">— A</strong></article><article class="relay-status-card"><small>Daya</small><strong id="relayPzemPower">— W</strong></article><article class="relay-status-card"><small>Energi</small><strong id="relayPzemEnergy">— kWh</strong></article><article class="relay-status-card"><small>Frekuensi</small><strong id="relayPzemFrequency">— Hz</strong></article><article class="relay-status-card"><small>Power Factor</small><strong id="relayPzemPF">—</strong></article>
+  </div><small id="relayDecisionReason">Menunggu evaluasi sensor ESP32.</small>
+ </details>
+ <div class="relay-actions"><button class="primary" id="saveRelayConfig" type="button">Simpan konfigurasi relay</button><span id="relayConfigStatus" class="sub">Konfigurasi relay belum dimuat.</span></div>
+ <p class="relay-safety-note">Sakelar manual aktif ketika kendali relay ON, mode MANUAL dipilih, dan ESP32 terhubung. Pada mode AUTO, output ditentukan oleh kondisi sensor dan alarm.</p>
+</div>
 <div class="panel"><div class="panel-head"><div><h3>Konfigurasi alarm dan pengingat</h3><p>Atur ambang batas dan aktif/nonaktifkan notifikasi alarm sesuai kebutuhan.</p></div><span class="badge">Server</span></div><form id="alarmConfigForm" class="alarm-config-form"><div class="alarm-switch-grid">
 <div class="alarm-switch-card"><div><strong>Aktifkan sistem alarm</strong><small>ON: evaluasi ambang dan kirim peringatan Telegram. OFF: hentikan seluruh notifikasi alarm.</small></div><label class="toggle-switch" for="alarmEnabled"><input id="alarmEnabled" type="checkbox" checked><span class="toggle-slider"></span></label></div>
 <div class="alarm-switch-card"><div><strong>Deteksi ESP32 Offline</strong><small>ON: kirim peringatan saat perangkat tidak mengirim data lebih dari 3 menit, dan notifikasi pemulihan saat tersambung kembali.</small></div><label class="toggle-switch" for="alarmDeviceOfflineEnabled"><input id="alarmDeviceOfflineEnabled" type="checkbox" checked><span class="toggle-slider"></span></label></div>
