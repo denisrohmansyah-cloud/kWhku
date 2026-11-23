@@ -606,10 +606,22 @@ function doPost(e) {
 }
 
 
-const RELAY_SHEETS_={commands:['Perintah_Relay',['commandId','customerId','meterId','mode','desiredState','reason','createdAt','createdBy','status','ackAt','actualState','detail']],events:['Log_Relay',['timestamp','customerId','meterId','event','state','reason','source','detail']],config:['Konfigurasi_Relay',['customerId','enabled','mode','alarmCurrentMaxEnabled','alarmTemperatureMaxEnabled','maxCurrentA','maxTemperatureC','autoRecover','recoverStableSeconds','updatedAt','updatedBy','alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled']]};
+const RELAY_SHEETS_={commands:['Perintah_Relay',['commandId','customerId','meterId','mode','desiredState','reason','createdAt','createdBy','status','ackAt','actualState','detail']],events:['Log_Relay',['timestamp','customerId','meterId','event','state','reason','source','detail']],status:['Status_Relay',['customerId','meterId','outputState','reason','lastReportedAt']],config:['Konfigurasi_Relay',['customerId','enabled','mode','alarmCurrentMaxEnabled','alarmTemperatureMaxEnabled','maxCurrentA','maxTemperatureC','autoRecover','recoverStableSeconds','updatedAt','updatedBy','alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled']]};
 function ensureRelaySheets_(){const ss=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);Object.keys(RELAY_SHEETS_).forEach(k=>{const[n,h]=RELAY_SHEETS_[k];let sh=ss.getSheetByName(n);if(!sh){sh=ss.insertSheet(n);sh.getRange(1,1,1,h.length).setValues([h]);sh.setFrozenRows(1)}else{const ex=sh.getRange(1,1,1,Math.max(1,sh.getLastColumn())).getValues()[0].map(String);h.forEach(x=>{if(!ex.includes(x))sh.getRange(1,sh.getLastColumn()+1).setValue(x)})}})}
 function relayRows_(k){const[n,h]=RELAY_SHEETS_[k],sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(n);if(!sh||sh.getLastRow()<2)return[];return sh.getRange(2,1,sh.getLastRow()-1,h.length).getValues().map(r=>Object.fromEntries(h.map((x,i)=>[x,r[i]])))}
 function relayLog_(c,m,e,s,r,source,d){SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.events[0]).appendRow([new Date(),c,m,e,s,r,source,d||''])}
+
+function upsertRelayStatus_(customerId,meterId,state,reason){
+ const sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.status[0]);
+ const rows=relayRows_('status'),i=rows.findIndex(r=>String(r.customerId)===String(customerId)&&String(r.meterId)===String(meterId));
+ const now=new Date(),prev=i>=0?rows[i]:null;
+ if(i<0)sh.appendRow([customerId,meterId,state,reason||'',now]);
+ else sh.getRange(i+2,1,1,5).setValues([[customerId,meterId,state,reason||'',now]]);
+ if(!prev||String(prev.outputState)!==String(state)||String(prev.reason)!==String(reason||'')){
+  relayLog_(customerId,meterId,'STATE_CHANGE',state,reason||'Perubahan output GPIO', 'ESP32','');
+ }
+}
+
 function latestRelayCommand_(c,m){return relayRows_('commands').filter(r=>String(r.customerId)===String(c)&&String(r.meterId)===String(m)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null}
 const RELAY_ALARM_FLAG_KEYS_=['alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmCurrentMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmTemperatureMaxEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled'];
 function relayConfigFor_(customerId){
@@ -641,14 +653,16 @@ function getRelayStatus(session,targetId){
  const u=validateSession_(session);if(!u.ok)return u;
  const customers=getRows_('Pelanggan').filter(c=>truthy_(c.active));
  const selected=u.role==='ADMIN'?customers.filter(c=>!targetId||String(c.customerId)===String(targetId)):customers.filter(c=>String(c.customerId)===u.customerId);
- ensureRelaySheets_();const events=relayRows_('events'),commands=relayRows_('commands');
+ ensureRelaySheets_();const commands=relayRows_('commands'),statuses=relayRows_('status'),now=Date.now();
  return{ok:true,rows:selected.map(c=>{
   const cmd=commands.filter(x=>String(x.customerId)===String(c.customerId)&&String(x.meterId)===String(c.meterId)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null;
-  const ev=events.filter(x=>String(x.customerId)===String(c.customerId)&&String(x.meterId)===String(c.meterId)&&['STATE_REPORT','COMMAND_ACK'].includes(String(x.event))).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))[0]||null;
-  const cfg=relayConfigFor_(c.customerId);
+  const st=statuses.find(x=>String(x.customerId)===String(c.customerId)&&String(x.meterId)===String(c.meterId))||null;
+  const cfg=relayConfigFor_(c.customerId),reported=st&&st.lastReportedAt?new Date(st.lastReportedAt).getTime():0;
+  const fresh=reported>0&&(now-reported)<=90000;
   return{customerId:c.customerId,meterId:c.meterId,mode:cfg.mode,enabled:cfg.enabled,relayConfig:cfg,desiredState:cmd?String(cmd.desiredState):'OFF',commandStatus:cmd?String(cmd.status):'NO_COMMAND',
-   actualState:ev?String(ev.state):(cmd&&cmd.actualState?String(cmd.actualState):'UNKNOWN'),reason:ev?String(ev.reason||''):(cmd?String(cmd.reason||''):'Belum ada perintah'),
-   updatedAt:ev?new Date(ev.timestamp).toISOString():(cmd&&cmd.createdAt?new Date(cmd.createdAt).toISOString():'')};
+   outputState:fresh?String(st.outputState):st?'STALE':'UNKNOWN',reason:st?String(st.reason||''):'Belum ada laporan perangkat',
+   reportedAt:reported?new Date(reported).toISOString():'',statusAgeSeconds:reported?Math.max(0,Math.floor((now-reported)/1000)):null,
+   updatedAt:cmd&&cmd.ackAt?new Date(cmd.ackAt).toISOString():cmd&&cmd.createdAt?new Date(cmd.createdAt).toISOString():''};
  })};
 }
 function setRelayCommand_(session,mode,state,targetId){const s=validateSession_(session);if(!s.ok)return s;if(s.role!=='ADMIN')return{ok:false,message:'Kontrol relay prototipe hanya tersedia untuk administrator.'};const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(targetId||'')&&truthy_(x.active));if(!c)return{ok:false,message:'Pelanggan tidak ditemukan.'};if(mode!=='MANUAL'||!['ON','OFF'].includes(state))return{ok:false,message:'Perintah manual hanya dapat dikirim dalam mode MANUAL.'};const rc=relayConfigFor_(c.customerId);if(!rc.enabled)return{ok:false,message:'Aktifkan kendali relay terlebih dahulu.'};if(rc.mode!=='MANUAL')return{ok:false,message:'Ubah mode relay menjadi MANUAL terlebih dahulu.'};ensureRelaySheets_();const id='RLY-'+Utilities.getUuid(),now=new Date(),lock=LockService.getScriptLock();lock.waitLock(10000);try{SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]).appendRow([id,c.customerId,c.meterId,mode,state,mode==='MANUAL'?'Perintah manual website':'Perintah mode otomatis website',now,s.username,'PENDING','','','']);relayLog_(c.customerId,c.meterId,'COMMAND_QUEUED',state,'Perintah website '+mode,'WEBSITE',id);return{ok:true,commandId:id,status:'PENDING',message:'Perintah masuk antrean; menunggu konfirmasi ESP32.'}}finally{lock.releaseLock()}}
@@ -661,7 +675,7 @@ function relayDeviceApi_(body){if(!safeEqual_(String(body.apiKey||''),CONFIG.DEV
  }
  const fresh=x&&String(x.status)==='PENDING'&&age<=120000;
  return{ok:true,command:fresh?{commandId:String(x.commandId),mode:String(x.mode),desiredState:String(x.desiredState),status:String(x.status)}:null,relayConfig:relayConfigFor_(c)};
-}if(body.relayAction==='ack'){const id=String(body.commandId||''),state=['ON','OFF'].includes(String(body.actualState))?String(body.actualState):'UNKNOWN',rows=relayRows_('commands'),i=rows.findIndex(x=>String(x.commandId)===id&&String(x.customerId)===c&&String(x.meterId)===m);if(i<0)return{ok:false,message:'Command tidak ditemukan.'};if(String(rows[i].status)==='ACKNOWLEDGED')return{ok:true,alreadyAcknowledged:true};const now=new Date(),sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);sh.getRange(i+2,9,1,4).setValues([['ACKNOWLEDGED',now,state,String(body.detail||'').slice(0,180)]]);relayLog_(c,m,'COMMAND_ACK',state,'Konfirmasi ESP32','ESP32',id);return{ok:true}}if(body.relayAction==='status'){const state=['ON','OFF'].includes(String(body.actualState))?String(body.actualState):'UNKNOWN';relayLog_(c,m,'STATE_REPORT',state,'Laporan status','ESP32',String(body.detail||'').slice(0,180));return{ok:true}}return{ok:false,message:'Aksi relay tidak dikenal.'}}
+}if(body.relayAction==='ack'){const id=String(body.commandId||''),state=['ON','OFF'].includes(String(body.actualState))?String(body.actualState):'UNKNOWN',rows=relayRows_('commands'),i=rows.findIndex(x=>String(x.commandId)===id&&String(x.customerId)===c&&String(x.meterId)===m);if(i<0)return{ok:false,message:'Command tidak ditemukan.'};if(String(rows[i].status)==='ACKNOWLEDGED')return{ok:true,alreadyAcknowledged:true};const now=new Date(),sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);sh.getRange(i+2,9,1,4).setValues([['ACKNOWLEDGED',now,state,String(body.detail||'').slice(0,180)]]);upsertRelayStatus_(c,m,state,String(body.detail||'Perintah dikonfirmasi ESP32'));relayLog_(c,m,'COMMAND_ACK',state,'Konfirmasi ESP32','ESP32',id);return{ok:true}}if(body.relayAction==='status'){const state=['ON','OFF'].includes(String(body.outputState||body.actualState))?String(body.outputState||body.actualState):'UNKNOWN';upsertRelayStatus_(c,m,state,String(body.detail||'').slice(0,180));return{ok:true,receivedAt:new Date().toISOString()}}return{ok:false,message:'Aksi relay tidak dikenal.'}}
 
 function hashPin_(pin) {
   const props=PropertiesService.getScriptProperties();
