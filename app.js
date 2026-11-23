@@ -378,11 +378,12 @@ $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan men
 function relaySelectedCustomer(){return admin()?String($('relayCustomer')?.value||''):String(session?.customerId||'')}
 function renderRelayStatus(row){
  if(!row)return;
- $('relayActualState').textContent=row.actualState||'UNKNOWN';
+ $('relayActualState').textContent=row.outputState||'UNKNOWN';
  $('relayDesiredState').textContent=row.desiredState||'OFF';
  $('relayCommandStatus').textContent=row.commandStatus||'NO_COMMAND';
  $('relayModeBadge').textContent=(row.enabled?'AKTIF · ':'NONAKTIF · ')+(row.mode||'MANUAL');
- $('relayReason').textContent=(row.reason||'Belum ada laporan perangkat')+(row.updatedAt?' · '+new Date(row.updatedAt).toLocaleString('id-ID'):'');
+ const reported=row.reportedAt?'Laporan ESP32 '+new Date(row.reportedAt).toLocaleString('id-ID')+(row.statusAgeSeconds!==null?' · '+row.statusAgeSeconds+' detik lalu':''):'Belum ada heartbeat ESP32';
+ $('relayReason').textContent=(row.reason||'Belum ada laporan perangkat')+' · '+reported;
 }
 async function loadRelaySettings(){
  if(!session)return;
