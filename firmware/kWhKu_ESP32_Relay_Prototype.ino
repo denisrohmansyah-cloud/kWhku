@@ -579,42 +579,74 @@ void uploadReading() {
 }
 
 // ---------------- LCD ----------------
+void printLcdLine(uint8_t row, const String& value) {
+  lcd.setCursor(0, row);
+  String line = value.substring(0, 16);
+  lcd.print(line);
+  for (uint8_t i = line.length(); i < 16; i++) lcd.print(' ');
+}
+
+String lcdStatusText() {
+  if (!electricalDataValid) return "Sensor Error";
+  const bool dhtSelected = relayConfig.alarmTemperatureMaxEnabled ||
+    relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled;
+  if (dhtSelected && !temperatureDataValid) return "Sensor Error";
+  String alarmReason;
+  return evaluateSelectedRelayAlarms(alarmReason) ? "ALARM" : "Normal";
+}
+
 void updateLcd() {
   lcd.clear();
-  if (lcdPage == 0) {
-    lcd.setCursor(0, 0);
-    lcd.print("V:");
-    if (electricalDataValid) lcd.print(voltageV, 1); else lcd.print("--");
-    lcd.print(" A:");
-    if (electricalDataValid) lcd.print(currentA, 2); else lcd.print("--");
-    lcd.setCursor(0, 1);
-    lcd.print("P:");
-    if (electricalDataValid) lcd.print(powerW, 1); else lcd.print("--");
-    lcd.print(" W");
-  } else if (lcdPage == 1) {
-    lcd.setCursor(0, 0);
-    lcd.print("Energy:");
-    if (electricalDataValid) lcd.print(energyKwh, 3); else lcd.print("--");
-    lcd.print("kWh");
-    lcd.setCursor(0, 1);
-    lcd.print("PF:");
-    if (electricalDataValid) lcd.print(powerFactor, 2); else lcd.print("--");
-    lcd.print(" F:");
-    if (electricalDataValid) lcd.print(frequencyHz, 1); else lcd.print("--");
-  } else {
-    lcd.setCursor(0, 0);
-    lcd.print("T:");
-    if (temperatureDataValid) lcd.print(temperatureC, 1); else lcd.print("--");
-    lcd.print("C H:");
-    if (temperatureDataValid) lcd.print(humidityPct, 0); else lcd.print("--");
-    lcd.print("%");
-    lcd.setCursor(0, 1);
-    lcd.print(relayConfig.mode);
-    lcd.print(" R:");
-    lcd.print(relayActualOn ? "ON" : "OFF");
-    lcd.print(WiFi.status() == WL_CONNECTED ? " WiFi+" : " WiFi-");
+  switch (lcdPage) {
+    case 0:
+      printLcdLine(0, electricalDataValid
+        ? "V:" + String(voltageV, 2) + " A:" + String(currentA, 2)
+        : "V:-- A:--");
+      printLcdLine(1, electricalDataValid
+        ? "P:" + String(powerW, 1) + "W PF:" + String(powerFactor, 2)
+        : "P:-- PF:--");
+      break;
+
+    case 1:
+      printLcdLine(0, electricalDataValid
+        ? "Freq:" + String(frequencyHz, 2) + "Hz"
+        : "Freq:--");
+      printLcdLine(1, electricalDataValid
+        ? "E:" + String(energyKwh, 3) + " kWh"
+        : "E:-- kWh");
+      break;
+
+    case 2: {
+      const float costRp = electricalDataValid
+        ? energyKwh * DEFAULT_TARIFF_RP_PER_KWH : 0.0f;
+      printLcdLine(0, "Energi terpakai");
+      printLcdLine(1, electricalDataValid
+        ? "Biaya: Rp" + String((unsigned long)(costRp + 0.5f))
+        : "Biaya: --");
+      break;
+    }
+
+    case 3:
+      printLcdLine(0, temperatureDataValid
+        ? "Suhu:" + String(temperatureC, 2) + " C"
+        : "Suhu: --");
+      printLcdLine(1, temperatureDataValid
+        ? "Kelembapan:" + String(humidityPct, 2) + "%"
+        : "Kelembapan: --");
+      break;
+
+    case 4:
+      printLcdLine(0, WiFi.status() == WL_CONNECTED
+        ? "Wi-Fi: Online" : "Wi-Fi: Offline");
+      printLcdLine(1, "Status: " + lcdStatusText());
+      break;
+
+    default:
+      printLcdLine(0, "Mode: " + relayConfig.mode);
+      printLcdLine(1, "Relay: " + String(relayActualOn ? "ON" : "OFF"));
+      break;
   }
-  lcdPage = (lcdPage + 1) % 3;
+  lcdPage = (lcdPage + 1) % 6;
 }
 
 // ---------------- SETUP / LOOP ----------------
