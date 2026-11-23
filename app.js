@@ -378,29 +378,46 @@ $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan men
 
 
 function relaySelectedCustomer(){return admin()?String($('relayCustomer')?.value||''):String(session?.customerId||'')}
+let relayCurrentRow=null;
+let relayCommandInFlight=false;
+
 function renderRelayStatus(row){
  if(!row)return;
- $('relayActualState').textContent=row.outputState||'UNKNOWN';
+ relayCurrentRow=row;
+ const output=String(row.outputState||'UNKNOWN').toUpperCase();
+ const mode=String(row.mode||'MANUAL').toUpperCase();
+ const enabled=!!row.enabled;
+ const fresh=output!=='STALE'&&output!=='UNKNOWN'&&row.statusAgeSeconds!==null&&Number(row.statusAgeSeconds)<=15;
+ const pending=String(row.commandStatus||'')==='PENDING';
+
+ $('relayActualState').textContent=output;
  $('relayDecisionState').textContent=row.decisionState||'UNKNOWN';
- $('relayDecisionReason').textContent=row.decisionReason||'Belum ada evaluasi PZEM';
  $('relayDesiredState').textContent=row.desiredState||'OFF';
  $('relayCommandStatus').textContent=row.commandStatus||'NO_COMMAND';
- const outputLocked=String(row.reason||'').includes('ACTUATION_LOCKED_LOW_VOLTAGE_TEST_ONLY');
- $('relayModeBadge').textContent=outputLocked?'OUTPUT LOCKED':(row.enabled?'AKTIF · ':'NONAKTIF · ')+(row.mode||'MANUAL');
- const reported=row.reportedAt?'Heartbeat ESP32 '+new Date(row.reportedAt).toLocaleString('id-ID')+(row.statusAgeSeconds!==null?' · '+row.statusAgeSeconds+' detik lalu':''):'Belum ada heartbeat ESP32';
- $('relayReason').textContent=(row.reason||'Belum ada laporan output GPIO')+' · '+reported;
+ $('relayModeText').textContent=mode==='AUTO'?'OTOMATIS':'MANUAL';
+ $('relayModeBadge').textContent=!enabled?'KENDALI NONAKTIF':(mode==='AUTO'?'MODE OTOMATIS':'MODE MANUAL');
+ $('relayModeBadge').className='badge '+(enabled?'':'amber');
+ $('relayReason').textContent=(row.reason||'Belum ada laporan output GPIO')+' · '+(row.reportedAt?'Update '+new Date(row.reportedAt).toLocaleTimeString('id-ID')+(row.statusAgeSeconds!==null?' ('+row.statusAgeSeconds+' dtk lalu)':''):'Belum ada heartbeat ESP32');
 
- // Data ini berasal dari snapshot sensor lokal yang dikirim bersama heartbeat ESP32.
- const hasPzem=num(row.voltageV)!==null && num(row.currentA)!==null && num(row.powerW)!==null;
+ const hasPzem=num(row.voltageV)!==null&&num(row.currentA)!==null&&num(row.powerW)!==null;
  $('relayPzemVoltage').textContent=hasPzem?fmtV(row.voltageV)+' V':'— V';
  $('relayPzemCurrent').textContent=hasPzem?fmtCurrentA(row.currentA)+' A':'— A';
  $('relayPzemPower').textContent=hasPzem?fmtW(row.powerW)+' W':'— W';
  $('relayPzemEnergy').textContent=num(row.energyKwh)!==null?fmtEnergy(row.energyKwh)+' kWh':'— kWh';
  $('relayPzemFrequency').textContent=num(row.frequencyHz)!==null?fmtHz(row.frequencyHz)+' Hz':'— Hz';
  $('relayPzemPF').textContent=num(row.powerFactor)!==null?fmtPF(row.powerFactor):'—';
- const pzemTime=row.reportedAt?' · Snapshot PZEM '+new Date(row.reportedAt).toLocaleString('id-ID'):'';
- $('relayDecisionReason').textContent=(row.decisionReason||'Belum ada evaluasi PZEM')+pzemTime;
+ const pzemTime=row.reportedAt?' · '+new Date(row.reportedAt).toLocaleString('id-ID'):'';
+ $('relayDecisionReason').textContent=(row.decisionReason||'Belum ada evaluasi sensor')+pzemTime;
+ $('relayManualToggle').checked=output==='ON';
+ $('relayManualStatus').textContent=mode==='AUTO'
+  ?'Sakelar manual tidak tersedia pada mode otomatis.'
+  :!enabled?'Aktifkan kendali relay untuk menggunakan sakelar.'
+  :!fresh?'Menunggu heartbeat ESP32 terbaru. Sakelar dikunci sementara.'
+  :pending?'Perintah sedang diproses ESP32…'
+  :output==='ON'?'Relay sedang ON menurut laporan ESP32.':'Relay sedang OFF menurut laporan ESP32.';
+ syncRelayControls();
 }
+
 async function loadRelaySettings(){
  if(!session)return;
  const r=await api('getRelayStatus',session,admin()?undefined:session.customerId);
@@ -420,39 +437,82 @@ async function loadRelaySettings(){
  Object.entries(flags).forEach(([id,key])=>{const el=$(id);if(el)el.checked=!!cfg[key]});
  $('relayAutoRecover').checked=cfg.autoRecover!==false;
  $('relayStableSeconds').value=cfg.recoverStableSeconds??60;
- $('relayConfigStatus').textContent='Konfigurasi tersimpan · mode '+(cfg.mode||'MANUAL')+' · pemulihan '+(cfg.autoRecover===false?'manual':'otomatis');
+ $('relayConfigStatus').textContent='Tersimpan · '+(cfg.mode||'MANUAL')+' · pemulihan '+(cfg.autoRecover===false?'manual':'otomatis');
  renderRelayStatus(row);syncRelayControls();
 }
+
 async function loadRelayStatus(){
  if(!session)return;
  const r=await api('getRelayStatus',session,relaySelectedCustomer());
  if(!r?.ok)throw Error(r?.message||'Gagal memuat status relay');
  const row=(r.rows||[])[0];if(row)renderRelayStatus(row);
 }
+
 function syncRelayControls(){
  const automatic=$('relayMode').value==='AUTO';
- const manual=$('relayManualState'),btn=$('relaySendCommand');
- if(manual)manual.disabled=automatic;
- if(btn)btn.disabled=automatic||!$('relayEnabled').checked;
+ const enabled=$('relayEnabled').checked;
+ const fresh=relayCurrentRow&&relayCurrentRow.outputState!=='STALE'&&relayCurrentRow.outputState!=='UNKNOWN'&&relayCurrentRow.statusAgeSeconds!==null&&Number(relayCurrentRow.statusAgeSeconds)<=15;
+ const pending=String(relayCurrentRow?.commandStatus||'')==='PENDING';
+ const toggle=$('relayManualToggle');
+ if(toggle)toggle.disabled=automatic||!enabled||!fresh||pending||relayCommandInFlight;
+ $('relayManualControl').classList.toggle('is-disabled',automatic||!enabled||!fresh);
+ $('relayAutoInfo').classList.toggle('hidden',!automatic);
+ $('relayManualControl').classList.toggle('hidden',automatic);
+ $('relayMode').disabled=false;
+ $('relayEnabled').disabled=false;
 }
+
 $('relayMode')?.addEventListener('change',syncRelayControls);
 $('relayEnabled')?.addEventListener('change',syncRelayControls);
 $('relayCustomer')?.addEventListener('change',()=>loadRelaySettings().catch(e=>toast(e.message||e)));
+
+$('relayManualToggle')?.addEventListener('change',async()=>{
+ const toggle=$('relayManualToggle');
+ const requestedState=toggle.checked?'ON':'OFF';
+ const id=relaySelectedCustomer();
+ if(!$('relayEnabled').checked||$('relayMode').value!=='MANUAL'){
+  toggle.checked=String(relayCurrentRow?.outputState||'OFF')==='ON';
+  toast('Aktifkan kendali relay dan pilih mode MANUAL terlebih dahulu.');
+  return;
+ }
+ if(!relayCurrentRow||relayCurrentRow.outputState==='STALE'||relayCurrentRow.outputState==='UNKNOWN'||Number(relayCurrentRow.statusAgeSeconds)>15){
+  toggle.checked=String(relayCurrentRow?.outputState||'OFF')==='ON';
+  toast('Status ESP32 belum terbaru. Perintah manual dikunci.');
+  return;
+ }
+ if(requestedState==='ON'&&!confirm('Kirim perintah ON ke ESP32? Pastikan perangkat dan beban yang dikendalikan aman.')){
+  toggle.checked=String(relayCurrentRow.outputState)==='ON';
+  return;
+ }
+ relayCommandInFlight=true;syncRelayControls();
+ $('relayManualStatus').textContent='Mengirim perintah '+requestedState+' ke ESP32…';
+ try{
+  const result=await api('setRelayCommand',session,'MANUAL',requestedState,id);
+  if(!result?.ok)throw Error(result?.message||'Perintah relay gagal dikirim');
+  toast(result.message||'Perintah masuk antrean');
+  await loadRelayStatus();
+ }catch(error){
+  toast(error.message||String(error));
+  toggle.checked=String(relayCurrentRow?.outputState||'OFF')==='ON';
+ }finally{
+  relayCommandInFlight=false;syncRelayControls();
+ }
+});
+
 $('saveRelayConfig')?.addEventListener('click',async()=>{
  const id=relaySelectedCustomer();if(!id){toast('Pilih pelanggan perangkat terlebih dahulu.');return}
  const payload={enabled:$('relayEnabled').checked,mode:$('relayMode').value,alarmVoltageMinEnabled:$('relayAlarmVoltageMin').checked,alarmVoltageMaxEnabled:$('relayAlarmVoltageMax').checked,alarmCurrentMaxEnabled:$('relayAlarmCurrent').checked,alarmPowerMaxEnabled:$('relayAlarmPower').checked,alarmFrequencyMinEnabled:$('relayAlarmFrequencyMin').checked,alarmFrequencyMaxEnabled:$('relayAlarmFrequencyMax').checked,alarmPowerFactorMinEnabled:$('relayAlarmPF').checked,alarmTemperatureMaxEnabled:$('relayAlarmTemperature').checked,alarmHumidityMinEnabled:$('relayAlarmHumidityMin').checked,alarmHumidityMaxEnabled:$('relayAlarmHumidityMax').checked,autoRecover:$('relayAutoRecover').checked,recoverStableSeconds:Number($('relayStableSeconds').value)};
  const b=$('saveRelayConfig');b.disabled=true;b.textContent='Menyimpan…';
- try{const r=await api('saveRelayConfig',session,payload,id);if(!r?.ok)throw Error(r?.message||'Gagal menyimpan konfigurasi');toast(r.message||'Konfigurasi tersimpan');$('relayConfigStatus').textContent='Tersimpan '+new Date().toLocaleString('id-ID');await loadRelaySettings()}
- catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Simpan konfigurasi relay'}
+ try{
+  const result=await api('saveRelayConfig',session,payload,id);
+  if(!result?.ok)throw Error(result?.message||'Gagal menyimpan konfigurasi');
+  toast(result.message||'Konfigurasi tersimpan');
+  $('relayConfigStatus').textContent='Tersimpan '+new Date().toLocaleString('id-ID');
+  await loadRelaySettings();
+ }catch(error){toast(error.message||String(error))}
+ finally{b.disabled=false;b.textContent='Simpan konfigurasi relay'}
 });
-$('relaySendCommand')?.addEventListener('click',async()=>{
- const id=relaySelectedCustomer(),state=$('relayManualState').value;
- if(!$('relayEnabled').checked||$('relayMode').value!=='MANUAL'){toast('Aktifkan relay dan pilih mode MANUAL terlebih dahulu.');return}
- if(state==='ON'&&!confirm('Kirim perintah ON ke ESP32? Pastikan area dan perangkat yang dikendalikan aman.'))return;
- const b=$('relaySendCommand');b.disabled=true;b.textContent='Mengirim…';
- try{const r=await api('setRelayCommand',session,'MANUAL',state,id);if(!r?.ok)throw Error(r?.message||'Gagal mengirim perintah');toast(r.message||'Perintah terkirim');await loadRelayStatus()}
- catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Kirim permintaan manual';syncRelayControls()}
-});
+
 function syncAlarmToggleUI(){
  document.querySelectorAll('.mini-toggle').forEach(label=>{
   const input=label.querySelector('input[type="checkbox"]'),state=label.querySelector('small'),field=label.closest('.alarm-threshold-field');
