@@ -661,11 +661,13 @@ function getRelayStatus(session,targetId){
   const cfg=relayConfigFor_(c.customerId),reported=st&&st.lastReportedAt?new Date(st.lastReportedAt).getTime():0;
   const fresh=reported>0&&(now-reported)<=90000;
   return{customerId:c.customerId,meterId:c.meterId,mode:cfg.mode,enabled:cfg.enabled,relayConfig:cfg,desiredState:cmd?String(cmd.desiredState):'OFF',commandStatus:cmd?String(cmd.status):'NO_COMMAND',
-   outputState:fresh?String(st.outputState):st?'STALE':'UNKNOWN',reason:st?String(st.reason||''):'Belum ada laporan perangkat',decisionState:st?String(st.decisionState||'UNKNOWN'):'UNKNOWN',decisionReason:st?String(st.decisionReason||'Belum ada evaluasi PZEM'):'Belum ada evaluasi PZEM',
-   voltageV:st&&measurementNumber_(st.voltageV)!==null?Number(st.voltageV):null,currentA:st&&measurementNumber_(st.currentA)!==null?Number(st.currentA):null,
-   powerW:st&&measurementNumber_(st.powerW)!==null?Number(st.powerW):null,energyKwh:st&&measurementNumber_(st.energyKwh)!==null?Number(st.energyKwh):null,
-   frequencyHz:st&&measurementNumber_(st.frequencyHz)!==null?Number(st.frequencyHz):null,powerFactor:st&&measurementNumber_(st.powerFactor)!==null?Number(st.powerFactor):null,
-   temperatureC:st&&measurementNumber_(st.temperatureC)!==null?Number(st.temperatureC):null,humidityPct:st&&measurementNumber_(st.humidityPct)!==null?Number(st.humidityPct):null,
+   outputState:fresh?String(st.outputState):st?'STALE':'UNKNOWN',reason:st?String(st.reason||''):'Belum ada laporan perangkat',
+   decisionState:fresh?String(st.decisionState||'UNKNOWN'):st?'STALE':'UNKNOWN',
+   decisionReason:fresh?String(st.decisionReason||'Belum ada evaluasi PZEM'):st?'Heartbeat ESP32 kedaluwarsa; keputusan terbaru tidak diketahui':'Belum ada evaluasi PZEM',
+   voltageV:fresh&&measurementNumber_(st.voltageV)!==null?Number(st.voltageV):null,currentA:fresh&&measurementNumber_(st.currentA)!==null?Number(st.currentA):null,
+   powerW:fresh&&measurementNumber_(st.powerW)!==null?Number(st.powerW):null,energyKwh:fresh&&measurementNumber_(st.energyKwh)!==null?Number(st.energyKwh):null,
+   frequencyHz:fresh&&measurementNumber_(st.frequencyHz)!==null?Number(st.frequencyHz):null,powerFactor:fresh&&measurementNumber_(st.powerFactor)!==null?Number(st.powerFactor):null,
+   temperatureC:fresh&&measurementNumber_(st.temperatureC)!==null?Number(st.temperatureC):null,humidityPct:fresh&&measurementNumber_(st.humidityPct)!==null?Number(st.humidityPct):null,
    reportedAt:reported?new Date(reported).toISOString():'',statusAgeSeconds:reported?Math.max(0,Math.floor((now-reported)/1000)):null,
    updatedAt:cmd&&cmd.ackAt?new Date(cmd.ackAt).toISOString():cmd&&cmd.createdAt?new Date(cmd.createdAt).toISOString():''};
  })};
