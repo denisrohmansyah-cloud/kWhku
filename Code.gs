@@ -1014,18 +1014,40 @@ function measurementNumber_(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function energySeriesWithResetOffsets_(readings) {
+  const ordered=(Array.isArray(readings)?readings:[])
+    .filter(r=>r&&Number.isFinite(new Date(r.timestamp).getTime())&&measurementNumber_(r.energyKwh)!==null)
+    .slice().sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime());
+  let offset=0,previousRaw=null;
+  return ordered.map(r=>{
+    const raw=measurementNumber_(r.energyKwh);
+    // A decreasing cumulative counter is treated as a meter reset segment.
+    // The previous segment's final value is carried forward for continuity.
+    if(previousRaw!==null&&raw<previousRaw)offset+=previousRaw;
+    const normalized=Object.assign({},r,{energyKwh:offset+raw});
+    previousRaw=raw;
+    return normalized;
+  });
+}
 function estimateDailyCost_(readings,tariff) {
   if(!Array.isArray(readings)||readings.length<2||!(Number(tariff)>0))return 0;
-  const ordered=readings.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)),newest=ordered[ordered.length-1],oldest=ordered[Math.max(0,ordered.length-21)];
-  const t0=new Date(oldest.timestamp).getTime(),t1=new Date(newest.timestamp).getTime();
-  const e0=measurementNumber_(oldest.energyKwh),e1=measurementNumber_(newest.energyKwh);
-  const delta=e0===null||e1===null?NaN:e1-e0,hours=(t1-t0)/3600000;
-  if(!Number.isFinite(t0)||!Number.isFinite(t1)||hours<=0||!Number.isFinite(delta)||delta<0)return 0;
+  const ordered=energySeriesWithResetOffsets_(readings);
+  if(ordered.length<2)return 0;
+  const t1=new Date(ordered[ordered.length-1].timestamp).getTime();
+  const cutoff=t1-24*60*60*1000;
+  const window=ordered.filter(r=>new Date(r.timestamp).getTime()>=cutoff);
+  if(window.length<2)return 0;
+  const first=window[0],last=window[window.length-1];
+  const t0=new Date(first.timestamp).getTime(),end=new Date(last.timestamp).getTime();
+  const hours=(end-t0)/3600000;
+  const delta=Number(last.energyKwh)-Number(first.energyKwh);
+  // Require at least six hours of valid coverage to avoid extrapolating short bursts.
+  if(!Number.isFinite(hours)||hours<6||!Number.isFinite(delta)||delta<0)return 0;
   return delta/hours*24*Number(tariff);
 }
 function energyBetween_(readingsDesc,startMs,endMs){
   if(!Array.isArray(readingsDesc)||readingsDesc.length<2||!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs)return 0;
-  const ordered=readingsDesc.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));let total=0;
+  const ordered=energySeriesWithResetOffsets_(readingsDesc);let total=0;
   for(let i=1;i<ordered.length;i++){const a=ordered[i-1],b=ordered[i],t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime(),e0=measurementNumber_(a.energyKwh),e1=measurementNumber_(b.energyKwh);
     if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||e0===null||e1===null||e1<e0)continue;
     const overlap=Math.max(0,Math.min(t1,endMs)-Math.max(t0,startMs));if(overlap>0)total+=(e1-e0)*overlap/(t1-t0)}
