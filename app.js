@@ -386,7 +386,7 @@ async function loadTelegramLinkStatus(){
  if(badge){badge.textContent='MEMERIKSA';badge.className='badge amber'}
  try{
   const r=await api('getTelegramLinkStatus',session);
-  if(!r?.ok){const message=r?.message||'Gagal memeriksa tautan Telegram';if(message==='Operasi tidak dikenal.')throw Error('Apps Script belum diperbarui. Deploy Code.gs versi terbaru yang memiliki getTelegramLinkStatus.');throw Error(message);}
+  if(!r?.ok)throw Error(r?.message||'Gagal memeriksa tautan Telegram');
   badge.textContent=r.linked?'TERHUBUNG':'BELUM TERHUBUNG';
   badge.className='badge '+(r.linked?'':'amber');
   state.textContent=r.linked?'Akun Telegram sudah tertaut':'Belum ada akun Telegram yang tertaut';
@@ -404,7 +404,7 @@ async function loadTelegramLinkStatus(){
 $('refreshTelegramLink')?.addEventListener('click',()=>loadTelegramLinkStatus().catch(()=>{}));
 $('createTelegramLink')?.addEventListener('click',async()=>{
  const b=$('createTelegramLink');b.disabled=true;b.textContent='Membuat kode…';
- try{const r=await api('createTelegramLinkCode',session);if(!r?.ok){const message=r?.message||'Gagal membuat kode';if(message==='Operasi tidak dikenal.')throw Error('Apps Script belum diperbarui. Deploy Code.gs versi terbaru yang memiliki createTelegramLinkCode.');throw Error(message);}
+ try{const r=await api('createTelegramLinkCode',session);if(!r?.ok)throw Error(r?.message||'Gagal membuat kode');
   $('telegramLinkCode').textContent='/link '+r.code;$('telegramCodeWrap').classList.remove('hidden');
   $('telegramLinkExpiry').textContent='Kode berlaku '+r.expiresInMinutes+' menit. Gunakan kode sebelum kedaluwarsa.';
   $('openTelegramBot').href='https://t.me/'+encodeURIComponent(String(r.botUsername||'kWhKuMonitoringBot').replace(/^@/,''));
@@ -431,7 +431,7 @@ async function loadRelayHistory(){
  try{
   const limit=Number($('relayHistoryLimit')?.value||50);
   const result=await api('getRelayHistory',session,relaySelectedCustomer(),limit);
-  if(!result?.ok){const message=result?.message||'Gagal memuat riwayat relay';if(message==='Operasi tidak dikenal.')throw Error('Apps Script belum diperbarui. Deploy Code.gs versi terbaru yang memiliki getRelayHistory, lalu muat ulang halaman.');throw Error(message);}
+  if(!result?.ok)throw Error(result?.message||'Gagal memuat riwayat relay');
   const rows=Array.isArray(result.rows)?result.rows:[];
   $('relayHistorySummary').textContent=rows.length+' catatan ditampilkan · maksimum '+limit+' catatan';
   state.textContent=rows.length?'Riwayat terbaru ditampilkan di bawah.':'Belum ada riwayat kontrol untuk perangkat ini.';
@@ -468,10 +468,6 @@ function renderRelayStatus(row){
  const pending=String(row.commandStatus||'')==='PENDING';
 
  $('relayActualState').textContent=output;
- $('relayActualState').dataset.state=output;
- const commandMirror=$('relayCommandStatusMirror');if(commandMirror)commandMirror.textContent=row.commandStatus||'NO_COMMAND';
- const decisionMirror=$('relayDecisionStateMirror');if(decisionMirror)decisionMirror.textContent=row.decisionState||'UNKNOWN';
-
  $('relayDecisionState').textContent=row.decisionState||'UNKNOWN';
  $('relayDesiredState').textContent=row.desiredState||'OFF';
  $('relayCommandStatus').textContent=row.commandStatus||'NO_COMMAND';
@@ -541,13 +537,6 @@ function syncRelayControls(){
  const toggle=$('relayManualToggle');
  if(toggle)toggle.disabled=automatic||!enabled||!modeSaved||!fresh||pending||relayCommandInFlight;
  $('relayManualControl').classList.toggle('is-disabled',automatic||!enabled||!modeSaved||!fresh);
- const onButton=$('relayVisualOn'),offButton=$('relayVisualOff');
- const commandReady=!automatic&&enabled&&modeSaved&&fresh&&!pending&&!relayCommandInFlight;
- if(onButton)onButton.disabled=!commandReady||String(relayCurrentRow?.outputState||'')==='ON';
- if(offButton)offButton.disabled=!commandReady||String(relayCurrentRow?.outputState||'')==='OFF';
- document.querySelectorAll('[data-relay-mode]').forEach(button=>button.classList.toggle('is-active',button.dataset.relayMode===(automatic?'AUTO':'MANUAL')));
- const modeDescription=$('relayModeDescription');if(modeDescription)modeDescription.textContent=automatic?'Otomatis berdasarkan kondisi sensor dan alarm':'Kontrol pengguna';
-
  $('relayAutoInfo').classList.toggle('hidden',!automatic);
  const resetAvailable=automatic&&enabled&&modeSaved&&fresh&&$('relayAutoRecover').checked===false&&relayCurrentRow?.relayConfig?.autoRecover===false&&String(relayCurrentRow?.decisionReason||'').includes('AUTO_NORMAL_MANUAL_RESET_REQUIRED');
  $('relayAutoResetWrap').classList.toggle('hidden',!resetAvailable);
@@ -558,12 +547,6 @@ function syncRelayControls(){
  $('relayEnabled').disabled=false;
 }
 
-document.querySelectorAll('[data-relay-mode]').forEach(button=>button.addEventListener('click',()=>{
- const mode=button.dataset.relayMode;if(!mode)return;
- $('relayMode').value=mode;syncRelayControls();
-}));
-$('relayVisualOn')?.addEventListener('click',()=>{if($('relayManualToggle').disabled)return;$('relayManualToggle').checked=true;$('relayManualToggle').dispatchEvent(new Event('change',{bubbles:true}))});
-$('relayVisualOff')?.addEventListener('click',()=>{if($('relayManualToggle').disabled)return;$('relayManualToggle').checked=false;$('relayManualToggle').dispatchEvent(new Event('change',{bubbles:true}))});
 $('relayMode')?.addEventListener('change',syncRelayControls);
 $('relayEnabled')?.addEventListener('change',syncRelayControls);
 $('relayCustomer')?.addEventListener('change',()=>loadRelaySettings().catch(e=>toast(e.message||e)));
