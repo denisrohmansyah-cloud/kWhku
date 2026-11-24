@@ -372,3 +372,68 @@ input,select,textarea{max-width:100%;min-width:0}
 .relay-history-table{min-width:720px}
 .relay-history-table td{vertical-align:top;white-space:normal;max-width:360px;overflow-wrap:anywhere}
 @media(max-width:640px){.relay-history-toolbar{width:100%}.relay-history-toolbar .field{flex:1}.relay-history-toolbar button{flex:1}}
+
+/* kWh-Ku Relay & Alarm — Dark Engineering redesign */
+#page-alarmSettings{
+ --relay-bg:#07111f;--relay-panel:#0b1728;--relay-panel-2:#101f33;--relay-border:#263b55;
+ --relay-text:#eef5ff;--relay-muted:#9db0c9;--relay-green:#00df83;--relay-red:#ff5364;--relay-yellow:#ffc247;--relay-blue:#35baf5;
+ color:var(--relay-text);background:linear-gradient(145deg,#07111f 0%,#0b1627 58%,#0a1b2a 100%);
+ border:1px solid #263b55;border-radius:22px;padding:24px;box-shadow:0 24px 60px rgba(2,8,23,.18)
+}
+#page-alarmSettings>.panel{background:linear-gradient(155deg,rgba(15,29,48,.98),rgba(8,19,33,.98));border:1px solid var(--relay-border);border-radius:18px;color:var(--relay-text);box-shadow:0 12px 28px rgba(0,0,0,.18);padding:20px;margin:0 0 16px}
+#page-alarmSettings .panel-head{border-bottom:1px solid rgba(128,160,194,.16);padding-bottom:14px;margin-bottom:14px}
+#page-alarmSettings .panel-head h3,#page-alarmSettings h3,#page-alarmSettings strong{color:var(--relay-text)}
+#page-alarmSettings .panel-head p,#page-alarmSettings .sub,#page-alarmSettings small,#page-alarmSettings .relay-safety-note{color:var(--relay-muted)}
+#page-alarmSettings .badge{background:#17283e;color:#c6d8ef;border:1px solid #304966}
+#page-alarmSettings .badge.amber{background:rgba(255,194,71,.12);color:#ffd47d;border-color:rgba(255,194,71,.35)}
+#page-alarmSettings .relay-compact-status{grid-template-columns:minmax(220px,.85fr) minmax(0,1.8fr);gap:12px;margin:16px 0 18px}
+#page-alarmSettings .relay-live-card,#page-alarmSettings .relay-live-meta>div,#page-alarmSettings .relay-status-card{
+ background:linear-gradient(145deg,#0c1e30,#0a1727);border:1px solid #1d3b50;border-radius:14px;color:var(--relay-text);padding:17px
+}
+#page-alarmSettings .relay-live-card{min-height:145px;align-items:center;position:relative;overflow:hidden}
+#page-alarmSettings .relay-live-card:after{content:"";position:absolute;width:115px;height:115px;border-radius:50%;right:-28px;top:-30px;background:radial-gradient(circle,rgba(0,223,131,.18),transparent 70%)}
+#page-alarmSettings .relay-live-card strong{font-size:42px;line-height:1.1;color:var(--relay-green)}
+#page-alarmSettings .relay-live-meta{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#page-alarmSettings .relay-live-meta strong{font-size:16px;color:#e9f2ff}
+#page-alarmSettings .relay-config-grid{gap:12px}
+#page-alarmSettings .alarm-switch-card,#page-alarmSettings .field{
+ background:#0d1b2d;border:1px solid #263b55;border-radius:14px;color:var(--relay-text);padding:15px
+}
+#page-alarmSettings .field>span,#page-alarmSettings .field>label{color:#dce8f8}
+#page-alarmSettings input:not([type=checkbox]),#page-alarmSettings select,#page-alarmSettings textarea{
+ background:#081525!important;color:#f1f6ff!important;border:1px solid #334c68!important;border-radius:10px
+}
+#page-alarmSettings select option{background:#0b1728;color:#fff}
+#page-alarmSettings .toggle-slider{background:#40536a}
+#page-alarmSettings .toggle-switch input:checked+.toggle-slider{background:#00a96b}
+#page-alarmSettings .relay-manual-card{display:flex;justify-content:space-between;align-items:center;margin:12px 0}
+#page-alarmSettings .relay-auto-info{background:rgba(0,223,131,.08);border:1px solid rgba(0,223,131,.24);color:#8df0c2;border-radius:12px;padding:13px 15px}
+#page-alarmSettings .relay-advanced{background:#0d1b2d;border:1px solid #263b55;border-radius:13px;margin:12px 0;overflow:hidden}
+#page-alarmSettings .relay-advanced summary{padding:15px 17px;color:#e9f2ff;font-weight:700;cursor:pointer}
+#page-alarmSettings .relay-advanced[open] summary{border-bottom:1px solid #263b55}
+#page-alarmSettings .relay-advanced>.relay-config-grid,#page-alarmSettings .relay-advanced>.relay-pzem-grid,#page-alarmSettings .relay-advanced>small{margin:14px}
+#page-alarmSettings .relay-check{background:#0a192a;border-color:#263b55;color:#e7f0fc}
+#page-alarmSettings .relay-check b{color:#e7f0fc}
+#page-alarmSettings .relay-check small{color:var(--relay-muted)}
+#page-alarmSettings .relay-actions{margin:14px 0}
+#page-alarmSettings button.primary,#page-alarmSettings #saveRelayConfig{background:linear-gradient(135deg,#00a968,#00d77d);border-color:#00d77d;color:#041b13;font-weight:800}
+#page-alarmSettings button.secondary{background:#102239;border:1px solid #3b5674;color:#e8f1ff}
+#page-alarmSettings .relay-safety-note{background:rgba(255,194,71,.09);border:1px solid rgba(255,194,71,.32);color:#ffd78a;padding:13px 15px;border-radius:12px}
+#page-alarmSettings .relay-history-toolbar .field{background:transparent;border:0;padding:0}
+#page-alarmSettings .relay-history-state{background:#0b1d30;border:1px solid #263b55;color:var(--relay-muted)}
+#page-alarmSettings .table-wrap{border:1px solid #263b55;border-radius:13px;overflow:auto}
+#page-alarmSettings table{background:transparent;color:#e9f2ff}
+#page-alarmSettings table thead{background:#14263c}
+#page-alarmSettings table th{color:#b9cbe2;border-bottom:1px solid #2a405a}
+#page-alarmSettings table td{color:#e3edf9;border-bottom:1px solid rgba(128,160,194,.12)}
+#page-alarmSettings table tbody tr:nth-child(even){background:rgba(30,52,76,.28)}
+#page-alarmSettings table tbody tr:hover{background:rgba(53,186,245,.07)}
+#page-alarmSettings .telegram-link-row{background:#0b1b2c;border:1px solid #263b55;border-radius:13px;padding:15px}
+#page-alarmSettings .telegram-code-wrap{background:#091727;border-color:#3a5673}
+#page-alarmSettings .telegram-code-wrap strong{color:var(--relay-green)}
+#page-alarmSettings .button-link{color:#e9f2ff;border-color:#3b5674}
+#page-alarmSettings .telegram-link-help{color:#a9bdd5}
+#page-alarmSettings .alarm-switch-grid .alarm-switch-card{background:#0d1b2d}
+#page-alarmSettings .alarm-threshold-grid .field{background:#0d1b2d}
+@media(max-width:900px){#page-alarmSettings{padding:14px}#page-alarmSettings .relay-compact-status{grid-template-columns:1fr}#page-alarmSettings .relay-live-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){#page-alarmSettings>.panel{padding:14px}#page-alarmSettings .relay-live-meta{grid-template-columns:1fr 1fr}#page-alarmSettings .relay-history-toolbar{align-items:stretch}#page-alarmSettings .relay-history-toolbar .field{flex:1}#page-alarmSettings .relay-manual-card{align-items:flex-start}}
