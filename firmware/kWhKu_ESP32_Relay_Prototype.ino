@@ -32,7 +32,6 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
-#include <PZEM004Tv30.h>
 #include <DHT.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -67,7 +66,71 @@ static const uint32_t HTTP_TIMEOUT_MS = 10000;
 
 // ---------------- DEVICES ----------------
 HardwareSerial PZEMSerial(2);
-PZEM004Tv30 pzem(PZEMSerial, 16, 17);
+static const uint8_t PZEM_ADDRESS = 0xF8;
+static const uint32_t PZEM_BAUD_RATE = 9600;
+static const uint32_t PZEM_RESPONSE_TIMEOUT_MS = 500;
+
+uint16_t pzemCRC16(const uint8_t* data, size_t length) {
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < length; i++) {
+    crc ^= data[i];
+    for (uint8_t bit = 0; bit < 8; bit++)
+      crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : (crc >> 1);
+  }
+  return crc;
+}
+
+bool readPZEMModbus(float& voltage, float& current, float& power,
+                    float& energy, float& frequency, float& powerFactor) {
+  uint8_t request[8] = {PZEM_ADDRESS, 0x04, 0x00, 0x00, 0x00, 0x0A, 0, 0};
+  const uint16_t crc = pzemCRC16(request, 6);
+  request[6] = static_cast<uint8_t>(crc);
+  request[7] = static_cast<uint8_t>(crc >> 8);
+
+  while (PZEMSerial.available() > 0) PZEMSerial.read();
+  PZEMSerial.write(request, sizeof(request));
+  PZEMSerial.flush();
+
+  uint8_t response[25];
+  size_t received = 0;
+  const uint32_t started = millis();
+  while (received < sizeof(response) &&
+         static_cast<uint32_t>(millis() - started) < PZEM_RESPONSE_TIMEOUT_MS) {
+    while (PZEMSerial.available() > 0 && received < sizeof(response))
+      response[received++] = static_cast<uint8_t>(PZEMSerial.read());
+    if (received < sizeof(response)) yield();
+  }
+
+  if (received != sizeof(response) || response[0] != PZEM_ADDRESS ||
+      response[1] != 0x04 || response[2] != 0x14) return false;
+
+  const uint16_t receivedCrc = static_cast<uint16_t>(response[23]) |
+    (static_cast<uint16_t>(response[24]) << 8);
+  if (pzemCRC16(response, 23) != receivedCrc) return false;
+
+  const uint16_t voltageRaw = (uint16_t(response[3]) << 8) | response[4];
+  const uint32_t currentRaw = (uint32_t(response[8]) << 24) |
+    (uint32_t(response[7]) << 16) | (uint32_t(response[5]) << 8) | response[6];
+  const uint32_t powerRaw = (uint32_t(response[12]) << 24) |
+    (uint32_t(response[11]) << 16) | (uint32_t(response[9]) << 8) | response[10];
+  const uint32_t energyRaw = (uint32_t(response[16]) << 24) |
+    (uint32_t(response[15]) << 16) | (uint32_t(response[13]) << 8) | response[14];
+  const uint16_t frequencyRaw = (uint16_t(response[17]) << 8) | response[18];
+  const uint16_t pfRaw = (uint16_t(response[19]) << 8) | response[20];
+
+  voltage = voltageRaw / 10.0f;
+  current = currentRaw / 1000.0f;
+  power = powerRaw / 10.0f;
+  energy = energyRaw / 1000.0f;
+  frequency = frequencyRaw / 10.0f;
+  powerFactor = pfRaw / 100.0f;
+
+  return isFiniteValue(voltage) && isFiniteValue(current) &&
+    isFiniteValue(power) && isFiniteValue(energy) &&
+    isFiniteValue(frequency) && isFiniteValue(powerFactor) &&
+    voltage >= 0 && current >= 0 && power >= 0 && energy >= 0 &&
+    frequency >= 0 && powerFactor >= 0 && powerFactor <= 1;
+}
 DHT dht(DHT_PIN, DHT_TYPE);
 LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2);
 
@@ -396,25 +459,18 @@ String makeDeviceBaseJson(const char* action) {
 
 // ---------------- SENSOR ACQUISITION ----------------
 void readSensors() {
-  const float v = pzem.voltage();
-  const float a = pzem.current();
-  const float w = pzem.power();
-  const float e = pzem.energy();
-  const float hz = pzem.frequency();
-  const float pf = pzem.pf();
+  float v = NAN, a = NAN, w = NAN, e = NAN, hz = NAN, pf = NAN;
+  electricalDataValid = readPZEMModbus(v, a, w, e, hz, pf);
 
-  voltageV = v;
-  currentA = a;
-  powerW = w;
-  energyKwh = e;
-  frequencyHz = hz;
-  powerFactor = pf;
+  voltageV = electricalDataValid ? v : NAN;
+  currentA = electricalDataValid ? a : NAN;
+  powerW = electricalDataValid ? w : NAN;
+  energyKwh = electricalDataValid ? e : NAN;
+  frequencyHz = electricalDataValid ? hz : NAN;
+  powerFactor = electricalDataValid ? pf : NAN;
 
-  electricalDataValid =
-    isFiniteValue(v) && isFiniteValue(a) && isFiniteValue(w) &&
-    isFiniteValue(e) && isFiniteValue(hz) && isFiniteValue(pf) &&
-    v >= 0 && a >= 0 && w >= 0 && e >= 0 &&
-    hz >= 0 && pf >= 0 && pf <= 1;
+  if (!electricalDataValid)
+    Serial.println("[PZEM] Respons tidak valid/timeout/CRC gagal; data listrik invalid.");
 
   const float t = dht.readTemperature();
   const float h = dht.readHumidity();
@@ -880,7 +936,7 @@ void setup() {
   delay(150);
   safeRelayStartup();
 
-  PZEMSerial.begin(9600, SERIAL_8N1, 16, 17);
+  PZEMSerial.begin(PZEM_BAUD_RATE, SERIAL_8N1, 16, 17);
   dht.begin();
   Wire.begin(21, 22);
   lcd.init();
