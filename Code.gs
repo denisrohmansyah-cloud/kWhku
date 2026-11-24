@@ -1087,6 +1087,8 @@ function estimateDailyCost_(readings,tariff) {
   if(ordered.length<2)return 0;
   const latestMs=new Date(ordered[ordered.length-1].timestamp).getTime();
   if(!Number.isFinite(latestMs))return 0;
+  // Jangan tampilkan estimasi ketika sampel terakhir sudah kedaluwarsa.
+  if(Date.now()-latestMs>ENERGY_MAX_GAP_MS_)return 0;
   const stats=energyStatsBetween_(ordered,latestMs-DAILY_COST_WINDOW_MS_,latestMs);
   // Estimasi baru ditampilkan jika minimal 18 jam dari jendela 24 jam
   // benar-benar tercakup oleh interval pembacaan yang valid.
