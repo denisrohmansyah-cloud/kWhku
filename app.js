@@ -380,21 +380,37 @@ $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan men
 
 async function loadTelegramLinkStatus(){
  if(!session||admin())return;
- const r=await api('getTelegramLinkStatus',session);if(!r?.ok)throw Error(r?.message||'Gagal memeriksa tautan Telegram');
- $('telegramLinkBadge').textContent=r.linked?'TERHUBUNG':'BELUM TERHUBUNG';
- $('telegramLinkBadge').className='badge '+(r.linked?'':'amber');
- $('telegramLinkState').textContent=r.linked?'Akun Telegram sudah tertaut':'Belum ada akun Telegram yang tertaut';
- $('telegramLinkInfo').textContent=r.linked?'Username Telegram: '+(r.username?'@'+r.username:'tidak tersedia'):'Buat kode lalu kirim /link KODE ke bot.';
- $('unlinkTelegram').disabled=!r.linked;
+ const badge=$('telegramLinkBadge'),state=$('telegramLinkState'),info=$('telegramLinkInfo');
+ const refresh=$('refreshTelegramLink');
+ if(refresh){refresh.disabled=true;refresh.textContent='Memeriksa…'}
+ if(badge){badge.textContent='MEMERIKSA';badge.className='badge amber'}
+ try{
+  const r=await api('getTelegramLinkStatus',session);
+  if(!r?.ok)throw Error(r?.message||'Gagal memeriksa tautan Telegram');
+  badge.textContent=r.linked?'TERHUBUNG':'BELUM TERHUBUNG';
+  badge.className='badge '+(r.linked?'':'amber');
+  state.textContent=r.linked?'Akun Telegram sudah tertaut':'Belum ada akun Telegram yang tertaut';
+  info.textContent=r.linked?'Username Telegram: '+(r.username?'@'+r.username:'tidak tersedia')+' · Chat ID tersimpan di server.':'Buat kode, kirim ke bot, lalu periksa status kembali.';
+  $('unlinkTelegram').disabled=!r.linked;
+  if(r.linked)$('telegramCodeWrap').classList.add('hidden');
+  return r;
+ }catch(e){
+  badge.textContent='GAGAL DIPERIKSA';badge.className='badge red';
+  state.textContent='Status tautan tidak dapat dimuat';
+  info.textContent=e.message||String(e);
+  throw e;
+ }finally{if(refresh){refresh.disabled=false;refresh.textContent='Periksa status'}}
 }
+$('refreshTelegramLink')?.addEventListener('click',()=>loadTelegramLinkStatus().catch(()=>{}));
 $('createTelegramLink')?.addEventListener('click',async()=>{
  const b=$('createTelegramLink');b.disabled=true;b.textContent='Membuat kode…';
  try{const r=await api('createTelegramLinkCode',session);if(!r?.ok)throw Error(r?.message||'Gagal membuat kode');
-  $('telegramLinkCode').textContent=r.code;$('telegramCodeWrap').classList.remove('hidden');
-  $('telegramLinkExpiry').textContent='Kode berlaku '+r.expiresInMinutes+' menit. Buka bot @'+r.botUsername+' lalu kirim /link '+r.code;
+  $('telegramLinkCode').textContent='/link '+r.code;$('telegramCodeWrap').classList.remove('hidden');
+  $('telegramLinkExpiry').textContent='Kode berlaku '+r.expiresInMinutes+' menit. Gunakan kode sebelum kedaluwarsa.';
+  $('openTelegramBot').href='https://t.me/'+encodeURIComponent(String(r.botUsername||'kWhKuMonitoringBot').replace(/^@/,''));
  }catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Buat kode tautan'}
 });
-$('copyTelegramCode')?.addEventListener('click',()=>{const code=$('telegramLinkCode').textContent;if(code&&code!=='------'){navigator.clipboard?.writeText('/link '+code).then(()=>toast('Perintah /link berhasil disalin')).catch(()=>toast('Salin kode secara manual: /link '+code))}});
+$('copyTelegramCode')?.addEventListener('click',()=>{const command=$('telegramLinkCode').textContent;if(command&&command!=='------'){navigator.clipboard?.writeText(command).then(()=>toast('Perintah berhasil disalin')).catch(()=>toast('Salin perintah ini: '+command))}});
 $('unlinkTelegram')?.addEventListener('click',async()=>{
  if(!confirm('Putuskan tautan akun Telegram dari pelanggan ini?'))return;
  try{const r=await api('unlinkTelegram',session);if(!r?.ok)throw Error(r?.message||'Gagal memutus tautan');$('telegramCodeWrap').classList.add('hidden');await loadTelegramLinkStatus();toast(r.message)}catch(e){toast(e.message||String(e))}
