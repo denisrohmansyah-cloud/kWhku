@@ -572,7 +572,7 @@ function doPost(e) {
   try {
     assertConfigured_();
     const body=JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if(body.update_id!==undefined&&body.message){handleTelegramUpdate_(body);return json_({ok:true});}
+    if(body.update_id!==undefined&&body.message){const expected=PropertiesService.getScriptProperties().getProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET');const supplied=e&&e.parameter?String(e.parameter.kwhku_secret||''):'';if(!expected||!safeEqual_(expected,supplied))return json_({ok:false,message:'Unauthorized webhook'});const props=PropertiesService.getScriptProperties(),last=Number(props.getProperty('KWHKU_TELEGRAM_LAST_UPDATE')||0);if(Number(body.update_id)<=last)return json_({ok:true,duplicate:true});handleTelegramUpdate_(body);props.setProperty('KWHKU_TELEGRAM_LAST_UPDATE',String(body.update_id));return json_({ok:true});}
     if (body.fn === 'getDeviceConfig') return json_(getDeviceAlarmConfig_(body));
     if (body.fn === 'getLcdDashboard') return json_(getDeviceLcdDashboard_(body));
     if (body.relayAction) return json_(relayDeviceApi_(body));
@@ -1378,7 +1378,9 @@ function handleTelegramUpdate_(update){
 }
 function setupTelegramWebhook(){
  const cfg=telegramProperties_();if(!cfg.token)throw new Error('TELEGRAM_BOT_TOKEN belum diatur.');
- const url=ScriptApp.getService().getUrl();if(!url)throw new Error('Deploy Apps Script sebagai Web App terlebih dahulu.');
+ const baseUrl=ScriptApp.getService().getUrl();if(!baseUrl)throw new Error('Deploy Apps Script sebagai Web App terlebih dahulu.');
+ const props=PropertiesService.getScriptProperties();let secret=props.getProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET');if(!secret){secret=Utilities.getUuid()+Utilities.getUuid();props.setProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET',secret)}
+ const url=baseUrl+'?kwhku_secret='+encodeURIComponent(secret);
  const r=UrlFetchApp.fetch('https://api.telegram.org/bot'+cfg.token+'/setWebhook',{method:'post',contentType:'application/json',payload:JSON.stringify({url:url}),muteHttpExceptions:true});
  const result=JSON.parse(r.getContentText()||'{}');if(!result.ok)throw new Error('Set webhook gagal: '+r.getContentText());
  return{ok:true,url:url,description:result.description||'Webhook aktif'};
