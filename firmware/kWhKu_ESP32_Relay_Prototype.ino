@@ -41,8 +41,8 @@
 // ---------------- USER CONFIGURATION ----------------
 static const char* WIFI_SSID = "YOUR_WIFI_SSID";
 static const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-// Ganti dengan password OTA pribadi (minimal 12 karakter); jangan gunakan password Wi-Fi.
-static const char* OTA_PASSWORD = "CHANGE_THIS_OTA_PASSWORD";
+// Ganti dengan password OTA pribadi (minimal 8 karakter); jangan gunakan password Wi-Fi.
+static const char* OTA_PASSWORD = "CHANGE_THIS_OTA_PASSWORD"; // Minimal 8 karakter
 static const char* OTA_HOSTNAME = "kWhKu-ESP32-001";
 static const char* APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIegsiM_A3M4EtqOHTnHDCPv8pI4GR36mihZWrn5VL0qJaEr_94VPySe-LPxZzHgCzig/exec";
 static const char* DEVICE_API_KEY = "YOUR_DEVICE_API_KEY";
@@ -971,7 +971,7 @@ void loop() {
 
   // Start OTA only after Wi-Fi is connected; keep the service available on every loop.
   if (WiFi.status() == WL_CONNECTED && !otaStarted) {
-    if (String(OTA_PASSWORD).length() >= 12 &&
+    if (String(OTA_PASSWORD).length() >= 8 &&
         String(OTA_PASSWORD) != "CHANGE_THIS_OTA_PASSWORD") {
       ArduinoOTA.setHostname(OTA_HOSTNAME);
       ArduinoOTA.setPassword(OTA_PASSWORD);
