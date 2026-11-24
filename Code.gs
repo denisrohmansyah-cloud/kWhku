@@ -1331,29 +1331,28 @@ function getTokens(session){
 function genTokenCode_(){let d='';for(let i=0;i<20;i++)d+=Math.floor(Math.random()*10);return d.replace(/(\d{4})(?=\d)/g,'$1-');}
 /** Pemakaian harian (kWh & Rp) dari selisih energi kumulatif. readingsDesc = terbaru dulu. */
 function dailyUsage_(readingsDesc,tariff,customerId){
-  // Distribusikan selisih counter ke tanggal yang benar berdasarkan lama interval,
-  // agar interval yang melewati tengah malam tidak seluruhnya masuk ke satu hari.
+  // Hanya akumulasikan interval valid; interval >5 menit menjadi gap,
+  // bukan konsumsi yang diasumsikan tersebar merata.
   const asc=energySeriesWithResetOffsets_(readingsDesc);
   const m={};
   for(let i=1;i<asc.length;i++){
     const r0=asc[i-1],r1=asc[i];
     const t0=new Date(r0.timestamp).getTime(),t1=new Date(r1.timestamp).getTime();
-    const e0=measurementNumber_(r0.energyKwh),e1=measurementNumber_(r1.energyKwh),delta=e0===null||e1===null?NaN:e1-e0;
-    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(delta)||delta<0) continue;
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||
+       t1-t0>ENERGY_MAX_GAP_MS_)continue;
     let cursor=t0;
     while(cursor<t1){
       const day=Utilities.formatDate(new Date(cursor),CONFIG.TIME_ZONE,'yyyy-MM-dd');
       const nextDay=Utilities.parseDate(day+' 00:00:00',CONFIG.TIME_ZONE,'yyyy-MM-dd HH:mm:ss').getTime()+24*60*60*1000;
       const end=Math.min(t1,nextDay);
-      if(end<=cursor) break;
-      const share=delta*((end-cursor)/(t1-t0));
-      m[day]=(m[day]||0)+share;
+      if(end<=cursor)break;
+      const share=(Number(r1.energyKwh)-Number(r0.energyKwh))*((end-cursor)/(t1-t0));
+      if(Number.isFinite(share)&&share>=0)m[day]=(m[day]||0)+share;
       cursor=end;
     }
   }
   return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:m[k],costRp:m[k]*tariff}));
 }
-
 
 function alarmHtml_(value) {
   return String(value===null||value===undefined?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
