@@ -131,6 +131,7 @@
  </div>
  <div id="relayManualControl" class="alarm-switch-card relay-manual-card"><div><strong>Output relay manual</strong><small id="relayManualStatus">Sakelar mengikuti status output aktual ESP32.</small></div><label class="toggle-switch" for="relayManualToggle"><input id="relayManualToggle" type="checkbox" disabled><span class="toggle-slider"></span></label></div>
  <p id="relayAutoInfo" class="relay-auto-info hidden">Mode otomatis aktif. ESP32 mengendalikan relay berdasarkan kondisi sensor dan parameter alarm yang dipilih.</p>
+  <div id="relayAutoResetWrap" class="relay-actions hidden"><button class="primary" id="relayAutoReset" type="button" disabled>Reset trip AUTO</button><span class="sub">Tersedia jika pemulihan manual dipilih dan kondisi sensor normal stabil.</span></div>
  <details class="relay-advanced"><summary>Pengaturan pemicu otomatis</summary>
   <div class="relay-config-grid">
    <label class="relay-check"><input id="relayAlarmVoltageMin" type="checkbox"><span><b>Tegangan di bawah batas minimum</b><small>Mengikuti ambang Pengaturan Alarm.</small></span></label>
