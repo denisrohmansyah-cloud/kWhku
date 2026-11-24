@@ -1285,8 +1285,7 @@ function genTokenCode_(){let d='';for(let i=0;i<20;i++)d+=Math.floor(Math.random
 function dailyUsage_(readingsDesc,tariff,customerId){
   // Distribusikan selisih counter ke tanggal yang benar berdasarkan lama interval,
   // agar interval yang melewati tengah malam tidak seluruhnya masuk ke satu hari.
-  const asc=readingsDesc.slice().filter(r => r && Number.isFinite(new Date(r.timestamp).getTime()))
-    .sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const asc=energySeriesWithResetOffsets_(readingsDesc);
   const m={};
   for(let i=1;i<asc.length;i++){
     const r0=asc[i-1],r1=asc[i];
