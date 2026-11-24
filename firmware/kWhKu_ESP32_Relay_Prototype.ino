@@ -137,6 +137,7 @@ String relayDecisionState = "UNKNOWN";
 String relayDecisionReason = "MENUNGGU_DATA_PZEM";
 String manualRequestedState = "OFF";
 bool autoTripLatched = true; // Safe startup: AUTO must complete stable period before ON
+uint16_t relayAlarmLatchMask = 0;
 uint32_t normalSinceMs = 0;
 String relayReason = "BOOT_SAFE_OFF";
 String lastProcessedCommandId = "";
@@ -506,7 +507,26 @@ void applyRelayConfig(JsonObjectConst cfg) {
   next.autoRecover = cfg["autoRecover"] | true;
   next.recoverStableSeconds = cfg["recoverStableSeconds"] | 60;
 
-  const bool modeChanged = relayConfigValid && next.mode != relayConfig.mode;
+  const bool configChanged = relayConfigValid && (
+    next.enabled != relayConfig.enabled || next.mode != relayConfig.mode ||
+    next.alarmVoltageMinEnabled != relayConfig.alarmVoltageMinEnabled ||
+    next.alarmVoltageMaxEnabled != relayConfig.alarmVoltageMaxEnabled ||
+    next.alarmCurrentMaxEnabled != relayConfig.alarmCurrentMaxEnabled ||
+    next.alarmPowerMaxEnabled != relayConfig.alarmPowerMaxEnabled ||
+    next.alarmFrequencyMinEnabled != relayConfig.alarmFrequencyMinEnabled ||
+    next.alarmFrequencyMaxEnabled != relayConfig.alarmFrequencyMaxEnabled ||
+    next.alarmPowerFactorMinEnabled != relayConfig.alarmPowerFactorMinEnabled ||
+    next.alarmTemperatureMaxEnabled != relayConfig.alarmTemperatureMaxEnabled ||
+    next.alarmHumidityMinEnabled != relayConfig.alarmHumidityMinEnabled ||
+    next.alarmHumidityMaxEnabled != relayConfig.alarmHumidityMaxEnabled ||
+    next.minVoltageV != relayConfig.minVoltageV || next.maxVoltageV != relayConfig.maxVoltageV ||
+    next.maxCurrentA != relayConfig.maxCurrentA || next.maxPowerW != relayConfig.maxPowerW ||
+    next.minFrequencyHz != relayConfig.minFrequencyHz || next.maxFrequencyHz != relayConfig.maxFrequencyHz ||
+    next.minPowerFactor != relayConfig.minPowerFactor || next.maxTemperatureC != relayConfig.maxTemperatureC ||
+    next.minHumidityPct != relayConfig.minHumidityPct || next.maxHumidityPct != relayConfig.maxHumidityPct ||
+    next.autoRecover != relayConfig.autoRecover ||
+    next.recoverStableSeconds != relayConfig.recoverStableSeconds
+  );
   relayConfig = next;
   relayConfigValid = true;
 
@@ -522,8 +542,8 @@ void applyRelayConfig(JsonObjectConst cfg) {
     manualRequestedState = "OFF";
     setRelayDecision("UNKNOWN", "INVALID_RELAY_MODE");
     setRelayOutput(false, "INVALID_RELAY_MODE");
-  } else if (modeChanged) {
-    // A mode transition never carries the previous ON state across modes.
+  } else if (configChanged) {
+    // Any interlock/configuration change invalidates the previous ON permission and stability timer.
     autoTripLatched = true;
     normalSinceMs = 0;
     manualRequestedState = "OFF";
@@ -551,6 +571,26 @@ void processManualCommand(JsonObjectConst command) {
     return;
   }
   lastProcessedCommandId = id;
+
+  if (mode == "AUTO_RESET") {
+    String resetAlarmReason;
+    const bool resetBlocked = evaluateSelectedRelayAlarms(resetAlarmReason);
+    const uint32_t stableMs = (uint32_t)relayConfig.recoverStableSeconds * 1000UL;
+    const bool stable = normalSinceMs != 0 && (millis() - normalSinceMs) >= stableMs;
+    if (!relayConfigValid || !relayConfig.enabled || relayConfig.mode != "AUTO" ||
+        relayConfig.autoRecover || resetBlocked || !stable || !autoTripLatched) {
+      lastProcessedCommandDetail = "RESET ditolak: mode AUTO, pemulihan manual, sensor normal, dan waktu stabil wajib terpenuhi. " + resetAlarmReason;
+      setRelayDecision("OFF", "AUTO_MANUAL_RESET_REJECTED");
+      setRelayOutput(false, "AUTO_MANUAL_RESET_REJECTED");
+    } else {
+      autoTripLatched = false;
+      setRelayDecision("ON", "AUTO_MANUAL_RESET_ACCEPTED");
+      setRelayOutput(true, "AUTO_MANUAL_RESET_ACCEPTED");
+      lastProcessedCommandDetail = "RESET diterima setelah kondisi normal stabil.";
+    }
+    acknowledgeRelayCommand(id, lastProcessedCommandDetail);
+    return;
+  }
 
   if (desired != "ON" && desired != "OFF") {
     manualRequestedState = "OFF";
@@ -635,23 +675,32 @@ bool evaluateSelectedRelayAlarms(String &reason) {
     relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled;
   if (!electricalDataValid || (dhtSelected && !temperatureDataValid)) {
     reason = "SENSOR_INVALID";
-    return true; // Treat missing measurements as a blocking condition.
+    return true;
   }
 
-  auto addReason = [&](const char* label) {
-    if (reason.length()) reason += "+";
-    reason += label;
+  // Per-parameter hysteresis is aligned with the Telegram recovery rules.
+  struct AlarmRule { uint16_t bit; bool enabled; bool abnormal; bool recovered; const char* label; };
+  AlarmRule rules[] = {
+    {1u<<0, relayConfig.alarmVoltageMinEnabled, voltageV < relayConfig.minVoltageV, voltageV >= relayConfig.minVoltageV + 2.0f, "VOLTAGE_LOW"},
+    {1u<<1, relayConfig.alarmVoltageMaxEnabled, voltageV > relayConfig.maxVoltageV, voltageV <= relayConfig.maxVoltageV - 2.0f, "VOLTAGE_HIGH"},
+    {1u<<2, relayConfig.alarmCurrentMaxEnabled, currentA > relayConfig.maxCurrentA, currentA <= relayConfig.maxCurrentA * 0.95f, "CURRENT_HIGH"},
+    {1u<<3, relayConfig.alarmPowerMaxEnabled, powerW > relayConfig.maxPowerW, powerW <= relayConfig.maxPowerW * 0.95f, "POWER_HIGH"},
+    {1u<<4, relayConfig.alarmFrequencyMinEnabled, frequencyHz < relayConfig.minFrequencyHz, frequencyHz >= relayConfig.minFrequencyHz + 0.1f, "FREQUENCY_LOW"},
+    {1u<<5, relayConfig.alarmFrequencyMaxEnabled, frequencyHz > relayConfig.maxFrequencyHz, frequencyHz <= relayConfig.maxFrequencyHz - 0.1f, "FREQUENCY_HIGH"},
+    {1u<<6, relayConfig.alarmPowerFactorMinEnabled, powerFactor < relayConfig.minPowerFactor, powerFactor >= relayConfig.minPowerFactor + 0.03f, "POWER_FACTOR_LOW"},
+    {1u<<7, relayConfig.alarmTemperatureMaxEnabled, temperatureC > relayConfig.maxTemperatureC, temperatureC <= relayConfig.maxTemperatureC - 1.0f, "TEMPERATURE_HIGH"},
+    {1u<<8, relayConfig.alarmHumidityMinEnabled, humidityPct < relayConfig.minHumidityPct, humidityPct >= relayConfig.minHumidityPct + 2.0f, "HUMIDITY_LOW"},
+    {1u<<9, relayConfig.alarmHumidityMaxEnabled, humidityPct > relayConfig.maxHumidityPct, humidityPct <= relayConfig.maxHumidityPct - 2.0f, "HUMIDITY_HIGH"}
   };
-  if (relayConfig.alarmVoltageMinEnabled && voltageV < relayConfig.minVoltageV) addReason("VOLTAGE_LOW");
-  if (relayConfig.alarmVoltageMaxEnabled && voltageV > relayConfig.maxVoltageV) addReason("VOLTAGE_HIGH");
-  if (relayConfig.alarmCurrentMaxEnabled && currentA > relayConfig.maxCurrentA) addReason("CURRENT_HIGH");
-  if (relayConfig.alarmPowerMaxEnabled && powerW > relayConfig.maxPowerW) addReason("POWER_HIGH");
-  if (relayConfig.alarmFrequencyMinEnabled && frequencyHz < relayConfig.minFrequencyHz) addReason("FREQUENCY_LOW");
-  if (relayConfig.alarmFrequencyMaxEnabled && frequencyHz > relayConfig.maxFrequencyHz) addReason("FREQUENCY_HIGH");
-  if (relayConfig.alarmPowerFactorMinEnabled && powerFactor < relayConfig.minPowerFactor) addReason("POWER_FACTOR_LOW");
-  if (relayConfig.alarmTemperatureMaxEnabled && temperatureC > relayConfig.maxTemperatureC) addReason("TEMPERATURE_HIGH");
-  if (relayConfig.alarmHumidityMinEnabled && humidityPct < relayConfig.minHumidityPct) addReason("HUMIDITY_LOW");
-  if (relayConfig.alarmHumidityMaxEnabled && humidityPct > relayConfig.maxHumidityPct) addReason("HUMIDITY_HIGH");
+  for (const AlarmRule &rule : rules) {
+    if (!rule.enabled) { relayAlarmLatchMask &= ~rule.bit; continue; }
+    if (rule.abnormal) relayAlarmLatchMask |= rule.bit;
+    else if (rule.recovered) relayAlarmLatchMask &= ~rule.bit;
+    if (relayAlarmLatchMask & rule.bit) {
+      if (reason.length()) reason += "+";
+      reason += rule.label;
+    }
+  }
   return reason.length() > 0;
 }
 

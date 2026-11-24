@@ -681,6 +681,27 @@ function upsertRelayStatus_(customerId,meterId,state,reason,decisionState,decisi
 }
 function latestRelayCommand_(c,m){return relayRows_('commands').filter(r=>String(r.customerId)===String(c)&&String(r.meterId)===String(m)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null}
 const RELAY_ALARM_FLAG_KEYS_=['alarmVoltageMinEnabled','alarmVoltageMaxEnabled','alarmCurrentMaxEnabled','alarmPowerMaxEnabled','alarmFrequencyMinEnabled','alarmFrequencyMaxEnabled','alarmPowerFactorMinEnabled','alarmTemperatureMaxEnabled','alarmHumidityMinEnabled','alarmHumidityMaxEnabled'];
+function syncRelayAlarmFlags_(customerId,flags){
+ const id=String(customerId||'');
+ if(!id||!flags)return;
+ const alarm=alarmConfigFor_(id);
+ const alarmSheet=ensureAlarmConfigSheet_();
+ const alarmRows=getRows_('alarmConfig');
+ const ai=alarmRows.findIndex(r=>String(r.customerId)===id);
+ if(ai>=0){
+  const headers=SHEETS.alarmConfig[1];
+  headers.forEach((key,i)=>{if(RELAY_ALARM_FLAG_KEYS_.includes(key))alarmSheet.getRange(ai+2,i+1).setValue(truthy_(flags[key]));});
+ }
+ relayConfigFor_(id); // Ensure the paired relay row exists before synchronizing flags.
+ ensureRelaySheets_();
+ const relaySheet=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.config[0]);
+ const relayRows=relayRows_('config');
+ const ri=relayRows.findIndex(r=>String(r.customerId)===id);
+ if(ri>=0){
+  const headers=RELAY_SHEETS_.config[1];
+  headers.forEach((key,i)=>{if(RELAY_ALARM_FLAG_KEYS_.includes(key))relaySheet.getRange(ri+2,i+1).setValue(truthy_(flags[key]));});
+ }
+}
 function relayConfigFor_(customerId){
  ensureRelaySheets_();
  const row=relayRows_('config').find(x=>String(x.customerId)===String(customerId));
@@ -749,6 +770,7 @@ function saveRelayConfig_(session,payload,targetId) {
   );
   if (index < 0) sh.appendRow(values);
   else sh.getRange(index + 2, 1, 1, values.length).setValues([values]);
+  syncRelayAlarmFlags_(id, config);
 
   relayLog_(id, customer.meterId, 'CONFIG_UPDATED', mode,
     'Konfigurasi relay diperbarui', 'WEBSITE', user.username);
@@ -790,13 +812,18 @@ function setRelayCommand_(session,mode,state,targetId) {
 
   const requestedMode = String(mode || '').toUpperCase();
   const requestedState = String(state || '').toUpperCase();
-  if (requestedMode !== 'MANUAL' || !['ON','OFF'].includes(requestedState)) {
-    return {ok:false,message:'Perintah manual hanya menerima ON/OFF dalam mode MANUAL.'};
-  }
-
   const relayConfig = relayConfigFor_(id);
+  const isAutoReset = requestedMode === 'AUTO_RESET' && requestedState === 'ON';
+  if (!isAutoReset && (requestedMode !== 'MANUAL' || !['ON','OFF'].includes(requestedState))) {
+    return {ok:false,message:'Perintah harus ON/OFF pada MANUAL atau RESET pada AUTO.'};
+  }
   if (!relayConfig.enabled) return {ok:false,message:'Aktifkan kendali relay terlebih dahulu.'};
-  if (relayConfig.mode !== 'MANUAL') return {ok:false,message:'Pilih mode MANUAL sebelum mengirim perintah ON/OFF.'};
+  if (isAutoReset) {
+    if (relayConfig.mode !== 'AUTO' || relayConfig.autoRecover !== false)
+      return {ok:false,message:'Reset manual hanya tersedia pada AUTO dengan pemulihan manual.'};
+  } else if (relayConfig.mode !== 'MANUAL') {
+    return {ok:false,message:'Pilih mode MANUAL sebelum mengirim perintah ON/OFF.'};
+  }
 
   ensureRelaySheets_();
   const commandId = 'RLY-' + Utilities.getUuid();
@@ -806,10 +833,10 @@ function setRelayCommand_(session,mode,state,targetId) {
   try {
     const sh = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID)
       .getSheetByName(RELAY_SHEETS_.commands[0]);
-    sh.appendRow([commandId,id,customer.meterId,'MANUAL',requestedState,
-      'Perintah manual dari dashboard',now,user.username,'PENDING','','','']);
-    relayLog_(id,customer.meterId,'COMMAND_QUEUED',requestedState,
-      'Perintah manual dashboard','WEBSITE',commandId);
+    sh.appendRow([commandId,id,customer.meterId,isAutoReset?'AUTO_RESET':'MANUAL',isAutoReset?'ON':requestedState,
+      isAutoReset?'Reset manual trip AUTO':'Perintah manual dari dashboard',now,user.username,'PENDING','','','']);
+    relayLog_(id,customer.meterId,isAutoReset?'AUTO_RESET_QUEUED':'COMMAND_QUEUED',isAutoReset?'RESET':requestedState,
+      isAutoReset?'Permintaan reset trip AUTO':'Perintah manual dashboard','WEBSITE',commandId);
     return {ok:true,commandId:commandId,status:'PENDING',
       message:'Perintah masuk antrean. Menunggu ESP32 mengambil dan mengonfirmasi perintah.'};
   } finally {
@@ -1236,7 +1263,8 @@ function saveAlarmConfig(session,config,targetId){
   const sh=ensureAlarmConfigSheet_(),rows=getRows_('alarmConfig'),i=rows.findIndex(r=>String(r.customerId)===id),now=new Date();
   const values=SHEETS.alarmConfig[1].map(k=>k==='customerId'?id:k==='updatedAt'?now:k==='updatedBy'?s.username:v[k]);
   if(i<0)sh.appendRow(values);else sh.getRange(i+2,1,1,values.length).setValues([values]);
-  return {ok:true,customerId:id,config:Object.assign({},v,{updatedAt:now.toISOString(),updatedBy:s.username}),message:'Konfigurasi alarm tersimpan.'};
+  syncRelayAlarmFlags_(id, v);
+  return {ok:true,customerId:id,config:Object.assign({},v,{updatedAt:now.toISOString(),updatedBy:s.username}),message:'Konfigurasi alarm tersimpan dan flag interlock relay disinkronkan.'};
 }
 function getDeviceAlarmConfig_(body){
  assertConfigured_();if(!safeEqual_(String(body.apiKey||''),CONFIG.DEVICE_API_KEY)||CONFIG.DEVICE_API_KEY.indexOf('REPLACE_')===0)return {ok:false,message:'Unauthorized device'};
@@ -1438,7 +1466,7 @@ function evaluateMultiParameterTelegramAlert_(r){
       ['frequency_low','Frekuensi rendah',r.frequencyHz,'Hz','≥ '+cfg.minFrequencyHz+' Hz',v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1,cfg.alarmFrequencyMinEnabled],
       ['frequency_high','Frekuensi tinggi',r.frequencyHz,'Hz','≤ '+cfg.maxFrequencyHz+' Hz',v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1,cfg.alarmFrequencyMaxEnabled],
       ['pf_low','Power factor rendah',r.powerFactor,'','≥ '+cfg.minPowerFactor,v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03,cfg.alarmPowerFactorMinEnabled],
-      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+cfg.maxTemperatureC+' °C',v=>v>=cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1,cfg.alarmTemperatureMaxEnabled],
+      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+cfg.maxTemperatureC+' °C',v=>v>cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1,cfg.alarmTemperatureMaxEnabled],
       ['humidity_low','Kelembapan rendah',r.humidityPct,'%','≥ '+cfg.minHumidityPct+'%',v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2,cfg.alarmHumidityMinEnabled],
       ['humidity_high','Kelembapan tinggi',r.humidityPct,'%','≤ '+cfg.maxHumidityPct+'%',v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2,cfg.alarmHumidityMaxEnabled]
     ];
