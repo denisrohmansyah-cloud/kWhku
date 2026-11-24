@@ -8,7 +8,7 @@
  * - Keep independent fuse/overcurrent protection in the low-voltage test circuit.
  *
  * Required libraries:
- *   PZEM004Tv30 by Jakub Mandula
+ *   PZEM-004T V4 Modbus RTU (native UART reader)
  *   DHT sensor library by Adafruit
  *   LiquidCrystal_I2C
  *   ArduinoJson (v6/v7)
@@ -28,11 +28,11 @@
  */
 
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
-#include <PZEM004Tv30.h>
 #include <DHT.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -41,6 +41,9 @@
 // ---------------- USER CONFIGURATION ----------------
 static const char* WIFI_SSID = "YOUR_WIFI_SSID";
 static const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+// Ganti dengan password OTA pribadi (minimal 8 karakter); jangan gunakan password Wi-Fi.
+static const char* OTA_PASSWORD = "CHANGE_THIS_OTA_PASSWORD"; // Minimal 8 karakter
+static const char* OTA_HOSTNAME = "kWhKu-ESP32-001";
 static const char* APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIegsiM_A3M4EtqOHTnHDCPv8pI4GR36mihZWrn5VL0qJaEr_94VPySe-LPxZzHgCzig/exec";
 static const char* DEVICE_API_KEY = "YOUR_DEVICE_API_KEY";
 static const char* CUSTOMER_ID = "PLG-001";
@@ -62,12 +65,76 @@ static const uint32_t READING_UPLOAD_INTERVAL_MS = 60000;
 static const uint32_t RELAY_POLL_INTERVAL_MS = 1500;
 static const uint32_t RELAY_HEARTBEAT_INTERVAL_MS = 4000;
 static const uint32_t WIFI_RETRY_INTERVAL_MS = 15000;
-static const uint32_t LCD_PAGE_INTERVAL_MS = 3000;
+static const uint32_t LCD_PAGE_INTERVAL_MS = 2500;
 static const uint32_t HTTP_TIMEOUT_MS = 10000;
 
 // ---------------- DEVICES ----------------
 HardwareSerial PZEMSerial(2);
-PZEM004Tv30 pzem(PZEMSerial, 16, 17);
+static const uint8_t PZEM_ADDRESS = 0xF8;
+static const uint32_t PZEM_BAUD_RATE = 9600;
+static const uint32_t PZEM_RESPONSE_TIMEOUT_MS = 500;
+
+uint16_t pzemCRC16(const uint8_t* data, size_t length) {
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < length; i++) {
+    crc ^= data[i];
+    for (uint8_t bit = 0; bit < 8; bit++)
+      crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : (crc >> 1);
+  }
+  return crc;
+}
+
+bool readPZEMModbus(float& voltage, float& current, float& power,
+                    float& energy, float& frequency, float& powerFactor) {
+  uint8_t request[8] = {PZEM_ADDRESS, 0x04, 0x00, 0x00, 0x00, 0x0A, 0, 0};
+  const uint16_t crc = pzemCRC16(request, 6);
+  request[6] = static_cast<uint8_t>(crc);
+  request[7] = static_cast<uint8_t>(crc >> 8);
+
+  while (PZEMSerial.available() > 0) PZEMSerial.read();
+  PZEMSerial.write(request, sizeof(request));
+  PZEMSerial.flush();
+
+  uint8_t response[25];
+  size_t received = 0;
+  const uint32_t started = millis();
+  while (received < sizeof(response) &&
+         static_cast<uint32_t>(millis() - started) < PZEM_RESPONSE_TIMEOUT_MS) {
+    while (PZEMSerial.available() > 0 && received < sizeof(response))
+      response[received++] = static_cast<uint8_t>(PZEMSerial.read());
+    if (received < sizeof(response)) yield();
+  }
+
+  if (received != sizeof(response) || response[0] != PZEM_ADDRESS ||
+      response[1] != 0x04 || response[2] != 0x14) return false;
+
+  const uint16_t receivedCrc = static_cast<uint16_t>(response[23]) |
+    (static_cast<uint16_t>(response[24]) << 8);
+  if (pzemCRC16(response, 23) != receivedCrc) return false;
+
+  const uint16_t voltageRaw = (uint16_t(response[3]) << 8) | response[4];
+  const uint32_t currentRaw = (uint32_t(response[8]) << 24) |
+    (uint32_t(response[7]) << 16) | (uint32_t(response[5]) << 8) | response[6];
+  const uint32_t powerRaw = (uint32_t(response[12]) << 24) |
+    (uint32_t(response[11]) << 16) | (uint32_t(response[9]) << 8) | response[10];
+  const uint32_t energyRaw = (uint32_t(response[16]) << 24) |
+    (uint32_t(response[15]) << 16) | (uint32_t(response[13]) << 8) | response[14];
+  const uint16_t frequencyRaw = (uint16_t(response[17]) << 8) | response[18];
+  const uint16_t pfRaw = (uint16_t(response[19]) << 8) | response[20];
+
+  voltage = voltageRaw / 10.0f;
+  current = currentRaw / 1000.0f;
+  power = powerRaw / 10.0f;
+  energy = energyRaw / 1000.0f;
+  frequency = frequencyRaw / 10.0f;
+  powerFactor = pfRaw / 100.0f;
+
+  return isFiniteValue(voltage) && isFiniteValue(current) &&
+    isFiniteValue(power) && isFiniteValue(energy) &&
+    isFiniteValue(frequency) && isFiniteValue(powerFactor) &&
+    voltage >= 0 && current >= 0 && power >= 0 && energy >= 0 &&
+    frequency >= 0 && powerFactor >= 0 && powerFactor <= 1;
+}
 DHT dht(DHT_PIN, DHT_TYPE);
 LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2);
 
@@ -188,6 +255,7 @@ void safeRelayStartup() {
 }
 
 bool wifiConnectionInProgress = false;
+bool otaStarted = false;
 uint32_t wifiConnectStartedMs = 0;
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
 
@@ -396,25 +464,18 @@ String makeDeviceBaseJson(const char* action) {
 
 // ---------------- SENSOR ACQUISITION ----------------
 void readSensors() {
-  const float v = pzem.voltage();
-  const float a = pzem.current();
-  const float w = pzem.power();
-  const float e = pzem.energy();
-  const float hz = pzem.frequency();
-  const float pf = pzem.pf();
+  float v = NAN, a = NAN, w = NAN, e = NAN, hz = NAN, pf = NAN;
+  electricalDataValid = readPZEMModbus(v, a, w, e, hz, pf);
 
-  voltageV = v;
-  currentA = a;
-  powerW = w;
-  energyKwh = e;
-  frequencyHz = hz;
-  powerFactor = pf;
+  voltageV = electricalDataValid ? v : NAN;
+  currentA = electricalDataValid ? a : NAN;
+  powerW = electricalDataValid ? w : NAN;
+  energyKwh = electricalDataValid ? e : NAN;
+  frequencyHz = electricalDataValid ? hz : NAN;
+  powerFactor = electricalDataValid ? pf : NAN;
 
-  electricalDataValid =
-    isFiniteValue(v) && isFiniteValue(a) && isFiniteValue(w) &&
-    isFiniteValue(e) && isFiniteValue(hz) && isFiniteValue(pf) &&
-    v >= 0 && a >= 0 && w >= 0 && e >= 0 &&
-    hz >= 0 && pf >= 0 && pf <= 1;
+  if (!electricalDataValid)
+    Serial.println("[PZEM] Respons tidak valid/timeout/CRC gagal; data listrik invalid.");
 
   const float t = dht.readTemperature();
   const float h = dht.readHumidity();
@@ -828,37 +889,39 @@ String lcdStatusText() {
 }
 
 void updateLcd() {
-  lcd.clear();
-  if (!dashboardDataValid) {
-    printLcdLine(0, "Dashboard sync...");
-    printLcdLine(1, WiFi.status() == WL_CONNECTED ? "Menunggu data" : "Wi-Fi Offline");
-    return;
-  }
-
+  // Pengukuran lokal selalu diprioritaskan agar LCD tetap berguna saat cloud offline.
   switch (lcdPage) {
     case 0:
-      printLcdLine(0, "V:" + String(dashboardVoltageV, 1) + " A:" + String(dashboardCurrentA, 2));
-      printLcdLine(1, "P:" + String(dashboardPowerW, 1) + " PF:" + String(dashboardPowerFactor, 2));
+      printLcdLine(0, electricalDataValid
+        ? "V:" + String(voltageV, 1) + " A:" + String(currentA, 2)
+        : "PZEM: Sensor Error");
+      printLcdLine(1, electricalDataValid
+        ? "P:" + String(powerW, 1) + " PF:" + String(powerFactor, 2)
+        : "Data lokal invalid");
       break;
 
     case 1:
-      printLcdLine(0, "Energi:" + String(dashboardEnergyMonthKwh, 2) + "kWh");
-      printLcdLine(1, "Biaya:Rp" + String((unsigned long)(dashboardCostMonthRp + 0.5f)));
+      printLcdLine(0, dashboardDataValid
+        ? "Energi:" + String(dashboardEnergyMonthKwh, 2) + "kWh"
+        : "Energi bln: --");
+      printLcdLine(1, dashboardDataValid
+        ? "Biaya:Rp" + String((unsigned long)(dashboardCostMonthRp + 0.5f))
+        : "Biaya: cloud --");
       break;
 
     case 2:
-      if (dashboardTemperatureValid) {
-        printLcdLine(0, "Suhu:" + String(dashboardTemperatureC, 1) + " C");
-        printLcdLine(1, "Kelembapan:" + String(dashboardHumidityPct, 0) + "%");
+      if (temperatureDataValid) {
+        printLcdLine(0, "Suhu:" + String(temperatureC, 1) + " C");
+        printLcdLine(1, "Kelembapan:" + String(humidityPct, 0) + "%");
       } else {
-        printLcdLine(0, "Suhu: --");
-        printLcdLine(1, "Kelembapan: --");
+        printLcdLine(0, "DHT11: Sensor Error");
+        printLcdLine(1, "Suhu/Kelembapan --");
       }
       break;
 
     case 3:
       printLcdLine(0, WiFi.status() == WL_CONNECTED ? "Wi-Fi: Online" : "Wi-Fi: Offline");
-      printLcdLine(1, String("Dashboard:") + (dashboardOnline ? "Online" : "Offline"));
+      printLcdLine(1, String("Cloud:") + (dashboardDataValid ? "Ada snapshot" : "Belum ada data"));
       break;
 
     case 4:
@@ -868,7 +931,9 @@ void updateLcd() {
 
     default:
       printLcdLine(0, "Tarif Rp/kWh");
-      printLcdLine(1, String((unsigned long)(dashboardTariffRpPerKwh + 0.5f)));
+      printLcdLine(1, dashboardDataValid
+        ? String((unsigned long)(dashboardTariffRpPerKwh + 0.5f))
+        : String("Cloud: data --"));
       break;
   }
   lcdPage = (lcdPage + 1) % 6;
@@ -880,7 +945,7 @@ void setup() {
   delay(150);
   safeRelayStartup();
 
-  PZEMSerial.begin(9600, SERIAL_8N1, 16, 17);
+  PZEMSerial.begin(PZEM_BAUD_RATE, SERIAL_8N1, 16, 17);
   dht.begin();
   Wire.begin(21, 22);
   lcd.init();
@@ -907,6 +972,38 @@ void loop() {
   const uint32_t now = millis();
 
   connectWiFiNonBlocking();
+
+  // Start OTA only after Wi-Fi is connected; keep the service available on every loop.
+  if (WiFi.status() == WL_CONNECTED && !otaStarted) {
+    if (String(OTA_PASSWORD).length() >= 8 &&
+        String(OTA_PASSWORD) != "CHANGE_THIS_OTA_PASSWORD") {
+      ArduinoOTA.setHostname(OTA_HOSTNAME);
+      ArduinoOTA.setPassword(OTA_PASSWORD);
+      ArduinoOTA.onStart([]() {
+        Serial.println("[OTA] Update dimulai; relay diperintahkan OFF selama proses update.");
+        setRelayOutput(false, "OTA_UPDATE_IN_PROGRESS");
+      });
+      ArduinoOTA.onEnd([]() { Serial.println("\\n[OTA] Update selesai; ESP32 akan restart."); });
+      ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("[OTA] Progress: %u%%\\r", (progress * 100U) / total);
+      });
+      ArduinoOTA.onError([](ota_error_t error) {
+        Serial.printf("[OTA] Error[%u].\\n", error);
+      });
+      ArduinoOTA.begin();
+      otaStarted = true;
+      Serial.printf("[OTA] Siap: hostname=%s IP=%s port=3232\\n",
+        OTA_HOSTNAME, WiFi.localIP().toString().c_str());
+    } else {
+      Serial.println("[OTA] Belum aktif: atur OTA_PASSWORD minimal 8 karakter.");
+      otaStarted = true; // Hindari spam log; firmware tetap berjalan normal.
+    }
+  }
+  if (otaStarted && WiFi.status() == WL_CONNECTED &&
+      String(OTA_PASSWORD) != "CHANGE_THIS_OTA_PASSWORD" &&
+      String(OTA_PASSWORD).length() >= 8) {
+    ArduinoOTA.handle();
+  }
 
   if (now - lastSensorReadMs >= SENSOR_INTERVAL_MS) {
     lastSensorReadMs = now;

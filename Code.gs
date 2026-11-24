@@ -1056,29 +1056,51 @@ function energySeriesWithResetOffsets_(readings) {
     return normalized;
   });
 }
+// Upload ESP32 normalnya setiap 60 detik. Interval lebih dari 5 menit
+// dianggap sebagai celah data dan tidak boleh diinterpolasi menjadi konsumsi.
+const ENERGY_MAX_GAP_MS_ = 5 * 60 * 1000;
+const DAILY_COST_WINDOW_MS_ = 24 * 60 * 60 * 1000;
+const DAILY_COST_MIN_COVERAGE_MS_ = 18 * 60 * 60 * 1000;
+
+function energyStatsBetween_(readings,startMs,endMs) {
+  const ordered=energySeriesWithResetOffsets_(readings);
+  let energyKwh=0,coveredMs=0,validIntervals=0,skippedGaps=0;
+  for(let i=1;i<ordered.length;i++){
+    const a=ordered[i-1],b=ordered[i];
+    const t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime();
+    const e0=measurementNumber_(a.energyKwh),e1=measurementNumber_(b.energyKwh);
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||e0===null||e1===null||e1<e0)continue;
+    const duration=t1-t0;
+    if(duration>ENERGY_MAX_GAP_MS_){skippedGaps++;continue;}
+    const overlap=Math.max(0,Math.min(t1,endMs)-Math.max(t0,startMs));
+    if(overlap<=0)continue;
+    energyKwh+=(e1-e0)*(overlap/duration);
+    coveredMs+=overlap;
+    validIntervals++;
+  }
+  return {energyKwh,coveredMs,validIntervals,skippedGaps};
+}
+
 function estimateDailyCost_(readings,tariff) {
   if(!Array.isArray(readings)||readings.length<2||!(Number(tariff)>0))return 0;
   const ordered=energySeriesWithResetOffsets_(readings);
   if(ordered.length<2)return 0;
-  const t1=new Date(ordered[ordered.length-1].timestamp).getTime();
-  const cutoff=t1-24*60*60*1000;
-  const window=ordered.filter(r=>new Date(r.timestamp).getTime()>=cutoff);
-  if(window.length<2)return 0;
-  const first=window[0],last=window[window.length-1];
-  const t0=new Date(first.timestamp).getTime(),end=new Date(last.timestamp).getTime();
-  const hours=(end-t0)/3600000;
-  const delta=Number(last.energyKwh)-Number(first.energyKwh);
-  // Require at least six hours of valid coverage to avoid extrapolating short bursts.
-  if(!Number.isFinite(hours)||hours<6||!Number.isFinite(delta)||delta<0)return 0;
-  return delta/hours*24*Number(tariff);
+  const latestMs=new Date(ordered[ordered.length-1].timestamp).getTime();
+  if(!Number.isFinite(latestMs))return 0;
+  // Jangan tampilkan estimasi ketika sampel terakhir sudah kedaluwarsa.
+  if(Date.now()-latestMs>ENERGY_MAX_GAP_MS_)return 0;
+  const stats=energyStatsBetween_(ordered,latestMs-DAILY_COST_WINDOW_MS_,latestMs);
+  // Estimasi baru ditampilkan jika minimal 18 jam dari jendela 24 jam
+  // benar-benar tercakup oleh interval pembacaan yang valid.
+  if(stats.coveredMs<DAILY_COST_MIN_COVERAGE_MS_||stats.validIntervals<2)return 0;
+  const coveredHours=stats.coveredMs/3600000;
+  return (stats.energyKwh/coveredHours)*24*Number(tariff);
 }
+
 function energyBetween_(readingsDesc,startMs,endMs){
-  if(!Array.isArray(readingsDesc)||readingsDesc.length<2||!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs)return 0;
-  const ordered=energySeriesWithResetOffsets_(readingsDesc);let total=0;
-  for(let i=1;i<ordered.length;i++){const a=ordered[i-1],b=ordered[i],t0=new Date(a.timestamp).getTime(),t1=new Date(b.timestamp).getTime(),e0=measurementNumber_(a.energyKwh),e1=measurementNumber_(b.energyKwh);
-    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||e0===null||e1===null||e1<e0)continue;
-    const overlap=Math.max(0,Math.min(t1,endMs)-Math.max(t0,startMs));if(overlap>0)total+=(e1-e0)*overlap/(t1-t0)}
-  return total;
+  if(!Array.isArray(readingsDesc)||readingsDesc.length<2||
+     !Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs)return 0;
+  return energyStatsBetween_(readingsDesc,startMs,endMs).energyKwh;
 }
 function truthy_(v){return v===true||String(v).toLowerCase()==='true'||String(v)==='1'||String(v).toLowerCase()==='yes';}
 function safeEqual_(a,b){if(a.length!==b.length)return false;let out=0;for(let i=0;i<a.length;i++)out|=a.charCodeAt(i)^b.charCodeAt(i);return out===0;}
@@ -1311,29 +1333,28 @@ function getTokens(session){
 function genTokenCode_(){let d='';for(let i=0;i<20;i++)d+=Math.floor(Math.random()*10);return d.replace(/(\d{4})(?=\d)/g,'$1-');}
 /** Pemakaian harian (kWh & Rp) dari selisih energi kumulatif. readingsDesc = terbaru dulu. */
 function dailyUsage_(readingsDesc,tariff,customerId){
-  // Distribusikan selisih counter ke tanggal yang benar berdasarkan lama interval,
-  // agar interval yang melewati tengah malam tidak seluruhnya masuk ke satu hari.
+  // Hanya akumulasikan interval valid; interval >5 menit menjadi gap,
+  // bukan konsumsi yang diasumsikan tersebar merata.
   const asc=energySeriesWithResetOffsets_(readingsDesc);
   const m={};
   for(let i=1;i<asc.length;i++){
     const r0=asc[i-1],r1=asc[i];
     const t0=new Date(r0.timestamp).getTime(),t1=new Date(r1.timestamp).getTime();
-    const e0=measurementNumber_(r0.energyKwh),e1=measurementNumber_(r1.energyKwh),delta=e0===null||e1===null?NaN:e1-e0;
-    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||!Number.isFinite(delta)||delta<0) continue;
+    if(!Number.isFinite(t0)||!Number.isFinite(t1)||t1<=t0||
+       t1-t0>ENERGY_MAX_GAP_MS_)continue;
     let cursor=t0;
     while(cursor<t1){
       const day=Utilities.formatDate(new Date(cursor),CONFIG.TIME_ZONE,'yyyy-MM-dd');
       const nextDay=Utilities.parseDate(day+' 00:00:00',CONFIG.TIME_ZONE,'yyyy-MM-dd HH:mm:ss').getTime()+24*60*60*1000;
       const end=Math.min(t1,nextDay);
-      if(end<=cursor) break;
-      const share=delta*((end-cursor)/(t1-t0));
-      m[day]=(m[day]||0)+share;
+      if(end<=cursor)break;
+      const share=(Number(r1.energyKwh)-Number(r0.energyKwh))*((end-cursor)/(t1-t0));
+      if(Number.isFinite(share)&&share>=0)m[day]=(m[day]||0)+share;
       cursor=end;
     }
   }
   return Object.keys(m).sort().slice(-62).map(k=>({customerId:customerId,date:k,kwh:m[k],costRp:m[k]*tariff}));
 }
-
 
 function alarmHtml_(value) {
   return String(value===null||value===undefined?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
