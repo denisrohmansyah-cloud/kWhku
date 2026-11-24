@@ -572,6 +572,7 @@ function doPost(e) {
   try {
     assertConfigured_();
     const body=JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if(body.update_id!==undefined&&body.message){const expected=PropertiesService.getScriptProperties().getProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET');const supplied=e&&e.parameter?String(e.parameter.kwhku_secret||''):'';if(!expected||!safeEqual_(expected,supplied))return json_({ok:false,message:'Unauthorized webhook'});const props=PropertiesService.getScriptProperties(),last=Number(props.getProperty('KWHKU_TELEGRAM_LAST_UPDATE')||0);if(Number(body.update_id)<=last)return json_({ok:true,duplicate:true});handleTelegramUpdate_(body);props.setProperty('KWHKU_TELEGRAM_LAST_UPDATE',String(body.update_id));return json_({ok:true});}
     if (body.fn === 'getDeviceConfig') return json_(getDeviceAlarmConfig_(body));
     if (body.fn === 'getLcdDashboard') return json_(getDeviceLcdDashboard_(body));
     if (body.relayAction) return json_(relayDeviceApi_(body));
@@ -799,6 +800,38 @@ function getRelayStatus(session,targetId){
    updatedAt:cmd&&cmd.ackAt?new Date(cmd.ackAt).toISOString():cmd&&cmd.createdAt?new Date(cmd.createdAt).toISOString():''};
  })};
 }
+
+function getRelayHistory(session,targetId,limit){
+ const user=validateSession_(session);if(!user.ok)return user;
+ const customers=getRows_('Pelanggan').filter(c=>truthy_(c.active));
+ const selected=user.role==='ADMIN'
+  ?customers.filter(c=>!targetId||String(c.customerId)===String(targetId))
+  :customers.filter(c=>String(c.customerId)===String(user.customerId));
+ const allowed=new Map(selected.map(c=>[String(c.customerId)+'|'+String(c.meterId),c]));
+ if(!allowed.size)return{ok:true,rows:[]};
+ ensureRelaySheets_();
+ const max=Math.max(1,Math.min(100,Number(limit)||50));
+ const events=relayRows_('events').filter(x=>allowed.has(String(x.customerId)+'|'+String(x.meterId))).map(x=>({
+  timestamp:x.timestamp instanceof Date?x.timestamp.toISOString():String(x.timestamp||''),
+  customerId:String(x.customerId||''),meterId:String(x.meterId||''),
+  type:String(x.event||'EVENT'),state:String(x.state||''),reason:String(x.reason||''),
+  source:String(x.source||''),detail:String(x.detail||''),commandId:''
+ }));
+ const commands=relayRows_('commands').filter(x=>allowed.has(String(x.customerId)+'|'+String(x.meterId))).map(x=>({
+  timestamp:x.createdAt instanceof Date?x.createdAt.toISOString():String(x.createdAt||''),
+  customerId:String(x.customerId||''),meterId:String(x.meterId||''),
+  type:'COMMAND_'+String(x.status||'UNKNOWN').toUpperCase(),
+  state:String(x.actualState||x.desiredState||''),reason:String(x.reason||''),
+  source:String(x.createdBy||''),detail:String(x.detail||''),
+  commandId:String(x.commandId||''),mode:String(x.mode||''),
+  desiredState:String(x.desiredState||''),status:String(x.status||''),
+  ackAt:x.ackAt instanceof Date?x.ackAt.toISOString():String(x.ackAt||'')
+ }));
+ const rows=events.concat(commands).filter(x=>x.timestamp&&Number.isFinite(new Date(x.timestamp).getTime()));
+ rows.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+ return{ok:true,rows:rows.slice(0,max),total:rows.length,limit:max};
+}
+
 function setRelayCommand_(session,mode,state,targetId) {
   const user = validateSession_(session);
   if (!user.ok) return user;
@@ -1296,6 +1329,95 @@ function getDeviceAlarmConfig_(body){
 }
 
 /** Router API untuk website (POST text/plain berisi JSON {fn,args}). */
+
+function telegramLinkMap_(){try{return JSON.parse(PropertiesService.getScriptProperties().getProperty('KWHKU_TELEGRAM_LINKS')||'{}')}catch(e){return {}}}
+function saveTelegramLinkMap_(map){PropertiesService.getScriptProperties().setProperty('KWHKU_TELEGRAM_LINKS',JSON.stringify(map||{}))}
+function createTelegramLinkCode_(session){
+ const u=validateSession_(session);if(!u.ok)return u;if(u.role==='ADMIN')return{ok:false,message:'Pengaitan Telegram hanya tersedia untuk akun pelanggan.'};
+ const code=String(Math.floor(100000+Math.random()*900000)),props=PropertiesService.getScriptProperties();
+ props.setProperty('KWHKU_TG_CODE_'+code,JSON.stringify({customerId:u.customerId,username:u.username,expiresAt:Date.now()+600000}));
+ return{ok:true,code,expiresInMinutes:10,botUsername:props.getProperty('TELEGRAM_BOT_USERNAME')||'kWhKuMonitoringBot'};
+}
+function getTelegramLinkStatus_(session){
+ const u=validateSession_(session);if(!u.ok)return u;if(u.role==='ADMIN')return{ok:false,message:'Fitur ini khusus pelanggan.'};
+ const map=telegramLinkMap_(),linked=Object.keys(map).find(id=>String(map[id].customerId)===String(u.customerId));
+ return{ok:true,linked:!!linked,username:linked?map[linked].telegramUsername||'':'',chatId:linked?linked:''};
+}
+function unlinkTelegram_(session){
+ const u=validateSession_(session);if(!u.ok)return u;if(u.role==='ADMIN')return{ok:false,message:'Fitur ini khusus pelanggan.'};
+ const map=telegramLinkMap_();Object.keys(map).forEach(id=>{if(String(map[id].customerId)===String(u.customerId))delete map[id]});saveTelegramLinkMap_(map);
+ return{ok:true,message:'Akun Telegram berhasil diputus dari akun pelanggan.'};
+}
+function queueTelegramRelayCommand_(customerId,mode,state,chatId){
+ const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId)&&truthy_(x.active));
+ if(!c)return{ok:false,message:'Pelanggan tidak aktif.'};
+ const cfg=relayConfigFor_(customerId),isReset=mode==='AUTO_RESET';
+ if(!cfg.enabled)return{ok:false,message:'Kendali relay belum diaktifkan di dashboard.'};
+ if(isReset?(cfg.mode!=='AUTO'||cfg.autoRecover):(cfg.mode!=='MANUAL'||!['ON','OFF'].includes(state)))return{ok:false,message:'Perintah tidak sesuai mode relay saat ini.'};
+ ensureRelaySheets_();const id='RLY-TG-'+Utilities.getUuid(),now=new Date();
+ SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]).appendRow([id,customerId,c.meterId,isReset?'AUTO_RESET':'MANUAL',isReset?'ON':state,'Perintah Telegram',now,'TELEGRAM:'+chatId,'PENDING','','','']);
+ relayLog_(customerId,c.meterId,'TELEGRAM_COMMAND_QUEUED',isReset?'RESET':state,'Perintah relay melalui Telegram','TELEGRAM',id);
+ return{ok:true,commandId:id,message:'Perintah masuk antrean ESP32. Pantau status dengan /status.'};
+}
+function telegramReply_(chatId,text,keyboard){
+ const cfg=telegramProperties_();if(!cfg.token)return;
+ const payload={chat_id:String(chatId),text:text,disable_web_page_preview:true};
+ if(keyboard)payload.reply_markup={keyboard:keyboard,resize_keyboard:true};
+ UrlFetchApp.fetch('https://api.telegram.org/bot'+cfg.token+'/sendMessage',{method:'post',contentType:'application/json',payload:JSON.stringify(payload),muteHttpExceptions:true});
+}
+function telegramCustomerStatus_(customerId){
+ const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId));if(!c)return null;
+ const rows=getRows_('Data_Listrik').filter(x=>String(x.customerId)===String(customerId)).sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
+ const r=rows[0]||null,relay= getRelayStatus(createInternalCustomerSession_(customerId),customerId);
+ const rr=relay&&relay.rows&&relay.rows[0]||{};
+ return{customer:c,reading:r,relay:rr};
+}
+function createInternalCustomerSession_(customerId){
+ const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId));if(!c)return null;
+ const user=getRows_('Users').find(x=>String(x.customerId)===String(customerId)&&String(x.role).toUpperCase()==='PELANGGAN'&&truthy_(x.active));if(!user)return null;
+ return createSession_({role:'PELANGGAN',username:user.username,name:user.name||c.name,customerId:customerId});
+}
+function handleTelegramUpdate_(update){
+ const msg=update&&update.message;if(!msg||!msg.chat)return;
+ const chatId=String(msg.chat.id),textMsg=String(msg.text||'').trim(),parts=textMsg.split(/\\s+/),command=(parts[0]||'').split('@')[0].toLowerCase(),arg=parts[1]||'';
+ const map=telegramLinkMap_();
+ if(command==='/start'||command==='/link'){
+  if(arg&&/^\\d{6}$/.test(arg)){
+   const props=PropertiesService.getScriptProperties(),raw=props.getProperty('KWHKU_TG_CODE_'+arg);
+   if(!raw){telegramReply_(chatId,'Kode pengaitan tidak ditemukan atau sudah digunakan. Buat kode baru dari dashboard.');return}
+   const data=JSON.parse(raw);if(Date.now()>data.expiresAt){props.deleteProperty('KWHKU_TG_CODE_'+arg);telegramReply_(chatId,'Kode sudah kedaluwarsa. Buat kode baru dari dashboard.');return}
+   Object.keys(map).forEach(id=>{if(String(map[id].customerId)===String(data.customerId))delete map[id]});
+   map[chatId]={customerId:data.customerId,username:data.username,telegramUsername:msg.from&&msg.from.username||'',linkedAt:new Date().toISOString()};
+   saveTelegramLinkMap_(map);props.deleteProperty('KWHKU_TG_CODE_'+arg);
+   telegramReply_(chatId,'✅ Akun Telegram berhasil ditautkan ke pelanggan '+data.customerId+'. Gunakan /help untuk melihat perintah.',[['/status','/relay'],['/on','/off'],['/mode','/help']]);return;
+  }
+  telegramReply_(chatId,'Selamat datang di bot kWh-Ku. Untuk menghubungkan akun, buat kode dari dashboard lalu kirim /link KODE.');return;
+ }
+ const link=map[chatId];if(!link){telegramReply_(chatId,'Akun belum tertaut. Masuk ke dashboard kWh-Ku, buat kode Telegram, lalu kirim /link KODE.');return}
+ const status=telegramCustomerStatus_(link.customerId);if(!status){telegramReply_(chatId,'Akun pelanggan tidak ditemukan atau tidak aktif.');return}
+ if(command==='/help'){telegramReply_(chatId,'Perintah kWh-Ku:\n/status — data sensor dan relay\n/relay — status output relay\n/on — minta relay ON (mode MANUAL)\n/off — minta relay OFF (mode MANUAL)\n/mode — melihat mode operasi\n/unlink — putuskan tautan akun.',[['/status','/relay'],['/on','/off'],['/mode','/help']]);return}
+ if(command==='/unlink'){delete map[chatId];saveTelegramLinkMap_(map);telegramReply_(chatId,'Tautan akun Telegram telah diputus.');return}
+ if(command==='/mode'){telegramReply_(chatId,'Mode relay: '+(status.relay.mode||'UNKNOWN')+'\nKendali: '+(status.relay.enabled?'AKTIF':'NONAKTIF'));return}
+ if(command==='/status'||command==='/relay'){
+  const r=status.reading,rr=status.relay,age=r?Math.max(0,Math.floor((Date.now()-new Date(r.receivedAt||r.timestamp).getTime())/60000)):null;
+  telegramReply_(chatId,'⚡ kWh-Ku | '+status.customer.name+'\nPerangkat: '+status.customer.meterId+'\nTegangan: '+(r?r.voltageV+' V':'—')+'\nArus: '+(r?r.currentA+' A':'—')+'\nDaya: '+(r?r.powerW+' W':'—')+'\nEnergi: '+(r?r.energyKwh+' kWh':'—')+'\nSuhu: '+(r&&r.temperatureC!==undefined?r.temperatureC+' °C':'lihat dashboard')+'\nData terakhir: '+(age===null?'belum ada':age+' menit lalu')+'\n\nRelay: '+(rr.outputState||'UNKNOWN')+'\nMode: '+(rr.mode||'UNKNOWN')+'\nKeputusan: '+(rr.decisionState||'UNKNOWN')+'\nAlasan: '+(rr.decisionReason||'—')+'\nStatus perintah: '+(rr.commandStatus||'NO_COMMAND'));return;
+ }
+ if(command==='/on'||command==='/off'){
+  const result=queueTelegramRelayCommand_(link.customerId,'MANUAL',command==='/on'?'ON':'OFF',chatId);
+  telegramReply_(chatId,(result.ok?'✅ ':'⚠️ ')+result.message);return;
+ }
+ telegramReply_(chatId,'Perintah tidak dikenal. Kirim /help.');
+}
+function setupTelegramWebhook(){
+ const cfg=telegramProperties_();if(!cfg.token)throw new Error('TELEGRAM_BOT_TOKEN belum diatur.');
+ const baseUrl=ScriptApp.getService().getUrl();if(!baseUrl)throw new Error('Deploy Apps Script sebagai Web App terlebih dahulu.');
+ const props=PropertiesService.getScriptProperties();let secret=props.getProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET');if(!secret){secret=Utilities.getUuid()+Utilities.getUuid();props.setProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET',secret)}
+ const url=baseUrl+'?kwhku_secret='+encodeURIComponent(secret);
+ const r=UrlFetchApp.fetch('https://api.telegram.org/bot'+cfg.token+'/setWebhook',{method:'post',contentType:'application/json',payload:JSON.stringify({url:url}),muteHttpExceptions:true});
+ const result=JSON.parse(r.getContentText()||'{}');if(!result.ok)throw new Error('Set webhook gagal: '+r.getContentText());
+ return{ok:true,url:url,description:result.description||'Webhook aktif'};
+}
+
 function handleApi_(body){
   const a=Array.isArray(body.args)?body.args:[];
   try{
@@ -1305,6 +1427,10 @@ function handleApi_(body){
       case 'getMonitoring': return getMonitoring(a[0],a[1]);
       case 'getAlarmConfig': return getAlarmConfig(a[0],a[1]);
       case 'getRelayStatus': return getRelayStatus(a[0],a[1]);
+      case 'getRelayHistory': return getRelayHistory(a[0],a[1],a[2]);
+      case 'getTelegramLinkStatus': return getTelegramLinkStatus_(a[0]);
+      case 'createTelegramLinkCode': return createTelegramLinkCode_(a[0]);
+      case 'unlinkTelegram': return unlinkTelegram_(a[0]);
       case 'saveRelayConfig': return saveRelayConfig_(a[0],a[1]||{},a[2]);
       case 'setRelayCommand': return setRelayCommand_(a[0],String(a[1]||'MANUAL'),String(a[2]||''),a[3]);
       case 'saveAlarmConfig': return saveAlarmConfig(a[0],a[1],a[2]);

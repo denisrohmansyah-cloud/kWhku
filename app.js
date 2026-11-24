@@ -125,7 +125,7 @@ function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
   if(p!=='history'&&selId){selId='';$('historySearch').value=''}
-  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e));loadRelaySettings().catch(e=>toast(e.message||e))}}
+  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e));loadRelaySettings().catch(e=>toast(e.message||e));loadRelayHistory().catch(e=>toast(e.message||e));if(!admin())loadTelegramLinkStatus().catch(e=>toast(e.message||e))}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
@@ -377,6 +377,82 @@ $('resetCalculationPeriod').onclick=async()=>{
 $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan menghapus riwayat pembacaan dan rekap pemakaian akun Anda dari sistem. Tindakan ini tidak dapat dibatalkan. Lanjutkan?'))return;if(!confirm('Konfirmasi terakhir: hapus semua data pembacaan listrik milik akun Anda?'))return;try{const res=await api('resetCustomerData',session);if(!res?.ok)throw Error(res?.message||'Reset gagal');toast('Data pembacaan berhasil direset');await refresh()}catch(err){toast(err.message||String(err))}};
 
 
+
+async function loadTelegramLinkStatus(){
+ if(!session||admin())return;
+ const badge=$('telegramLinkBadge'),state=$('telegramLinkState'),info=$('telegramLinkInfo');
+ const refresh=$('refreshTelegramLink');
+ if(refresh){refresh.disabled=true;refresh.textContent='Memeriksa…'}
+ if(badge){badge.textContent='MEMERIKSA';badge.className='badge amber'}
+ try{
+  const r=await api('getTelegramLinkStatus',session);
+  if(!r?.ok)throw Error(r?.message||'Gagal memeriksa tautan Telegram');
+  badge.textContent=r.linked?'TERHUBUNG':'BELUM TERHUBUNG';
+  badge.className='badge '+(r.linked?'':'amber');
+  state.textContent=r.linked?'Akun Telegram sudah tertaut':'Belum ada akun Telegram yang tertaut';
+  info.textContent=r.linked?'Username Telegram: '+(r.username?'@'+r.username:'tidak tersedia')+' · Chat ID tersimpan di server.':'Buat kode, kirim ke bot, lalu periksa status kembali.';
+  $('unlinkTelegram').disabled=!r.linked;
+  if(r.linked)$('telegramCodeWrap').classList.add('hidden');
+  return r;
+ }catch(e){
+  badge.textContent='GAGAL DIPERIKSA';badge.className='badge red';
+  state.textContent='Status tautan tidak dapat dimuat';
+  info.textContent=e.message||String(e);
+  throw e;
+ }finally{if(refresh){refresh.disabled=false;refresh.textContent='Periksa status'}}
+}
+$('refreshTelegramLink')?.addEventListener('click',()=>loadTelegramLinkStatus().catch(()=>{}));
+$('createTelegramLink')?.addEventListener('click',async()=>{
+ const b=$('createTelegramLink');b.disabled=true;b.textContent='Membuat kode…';
+ try{const r=await api('createTelegramLinkCode',session);if(!r?.ok)throw Error(r?.message||'Gagal membuat kode');
+  $('telegramLinkCode').textContent='/link '+r.code;$('telegramCodeWrap').classList.remove('hidden');
+  $('telegramLinkExpiry').textContent='Kode berlaku '+r.expiresInMinutes+' menit. Gunakan kode sebelum kedaluwarsa.';
+  $('openTelegramBot').href='https://t.me/'+encodeURIComponent(String(r.botUsername||'kWhKuMonitoringBot').replace(/^@/,''));
+ }catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Buat kode tautan'}
+});
+$('copyTelegramCode')?.addEventListener('click',()=>{const command=$('telegramLinkCode').textContent;if(command&&command!=='------'){navigator.clipboard?.writeText(command).then(()=>toast('Perintah berhasil disalin')).catch(()=>toast('Salin perintah ini: '+command))}});
+$('unlinkTelegram')?.addEventListener('click',async()=>{
+ if(!confirm('Putuskan tautan akun Telegram dari pelanggan ini?'))return;
+ try{const r=await api('unlinkTelegram',session);if(!r?.ok)throw Error(r?.message||'Gagal memutus tautan');$('telegramCodeWrap').classList.add('hidden');await loadTelegramLinkStatus();toast(r.message)}catch(e){toast(e.message||String(e))}
+});
+
+
+let relayHistoryInFlight=false;
+function relayHistoryText(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+function relayHistoryDate(value){
+ const d=new Date(value);return Number.isFinite(d.getTime())?d.toLocaleString('id-ID',{dateStyle:'short',timeStyle:'medium'}):'Waktu tidak tersedia';
+}
+async function loadRelayHistory(){
+ if(!session||relayHistoryInFlight)return;
+ relayHistoryInFlight=true;
+ const body=$('relayHistoryBody'),state=$('relayHistoryState'),button=$('refreshRelayHistory');
+ if(button){button.disabled=true;button.textContent='Memuat…'}
+ state.textContent='Mengambil riwayat dari server…';
+ try{
+  const limit=Number($('relayHistoryLimit')?.value||50);
+  const result=await api('getRelayHistory',session,relaySelectedCustomer(),limit);
+  if(!result?.ok)throw Error(result?.message||'Gagal memuat riwayat relay');
+  const rows=Array.isArray(result.rows)?result.rows:[];
+  $('relayHistorySummary').textContent=rows.length+' catatan ditampilkan · maksimum '+limit+' catatan';
+  state.textContent=rows.length?'Riwayat terbaru ditampilkan di bawah.':'Belum ada riwayat kontrol untuk perangkat ini.';
+  body.innerHTML=rows.length?rows.map(row=>{
+   const label=String(row.type||'EVENT').replace(/^COMMAND_/,'Perintah ');
+   const stateText=row.status?row.status+(row.actualState?' · '+row.actualState:''):row.state||'—';
+   const detail=[row.reason,row.detail,row.commandId?'ID: '+row.commandId:'',row.ackAt?'ACK: '+relayHistoryDate(row.ackAt):''].filter(Boolean).join(' · ');
+   return '<tr><td>'+relayHistoryText(relayHistoryDate(row.timestamp))+'</td><td>'+relayHistoryText(label)+'</td><td>'+relayHistoryText(stateText)+'</td><td>'+relayHistoryText(row.source||'—')+'</td><td>'+relayHistoryText(detail||'—')+'</td></tr>';
+  }).join(''):'<tr><td colspan="5">Belum ada data riwayat.</td></tr>';
+ }catch(error){
+  state.textContent='Riwayat gagal dimuat: '+(error.message||String(error));
+  body.innerHTML='<tr><td colspan="5">Tidak dapat mengambil riwayat. Silakan coba kembali.</td></tr>';
+  throw error;
+ }finally{
+  relayHistoryInFlight=false;
+  if(button){button.disabled=false;button.textContent='Muat ulang'}
+ }
+}
+$('refreshRelayHistory')?.addEventListener('click',()=>loadRelayHistory().catch(e=>toast(e.message||String(e))));
+$('relayHistoryLimit')?.addEventListener('change',()=>loadRelayHistory().catch(e=>toast(e.message||String(e))));
+
 function relaySelectedCustomer(){return admin()?String($('relayCustomer')?.value||''):String(session?.customerId||'')}
 let relayCurrentRow=null;
 let relayCommandInFlight=false;
@@ -474,6 +550,7 @@ function syncRelayControls(){
 $('relayMode')?.addEventListener('change',syncRelayControls);
 $('relayEnabled')?.addEventListener('change',syncRelayControls);
 $('relayCustomer')?.addEventListener('change',()=>loadRelaySettings().catch(e=>toast(e.message||e)));
+$('relayCustomer')?.addEventListener('change',()=>loadRelayHistory().catch(e=>toast(e.message||e)));
 
 $('relayManualToggle')?.addEventListener('change',async()=>{
  const toggle=$('relayManualToggle');

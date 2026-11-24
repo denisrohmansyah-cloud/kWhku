@@ -686,14 +686,14 @@ void processManualCommand(JsonObjectConst command) {
     manualRequestedState = "OFF"; // Require a fresh manual ON after an alarm clears.
     setRelayDecision("OFF", "MANUAL_ON_BLOCKED:" + alarmReason);
     setRelayOutput(false, "MANUAL_ON_BLOCKED");
-    lastProcessedCommandDetail = "ON ditolak oleh interlock data PZEM: " + alarmReason;
+    lastProcessedCommandDetail = "ON ditolak oleh interlock sensor/alarm: " + alarmReason;
     acknowledgeRelayCommand(id, lastProcessedCommandDetail);
     return;
   }
 
-  setRelayDecision("ON", "MANUAL_ON_ALLOWED_BY_LATEST_PZEM");
+  setRelayDecision("ON", "MANUAL_ON_ALLOWED_SENSOR_VALID_WARMUP");
   setRelayOutput(true, "WEBSITE_MANUAL_ON");
-  lastProcessedCommandDetail = "ON diminta dari website; " + relayDecisionReason;
+  lastProcessedCommandDetail = "ON diterima: sensor valid dan tidak ada alarm aktif. Timer stabil AUTO tidak diterapkan pada MANUAL.";
   if (!ENABLE_RELAY_OUTPUT) {
     lastProcessedCommandDetail += "; output dinonaktifkan melalui konfigurasi firmware.";
   }
@@ -734,8 +734,12 @@ bool evaluateSelectedRelayAlarms(String &reason) {
   reason = "";
   const bool dhtSelected = relayConfig.alarmTemperatureMaxEnabled ||
     relayConfig.alarmHumidityMinEnabled || relayConfig.alarmHumidityMaxEnabled;
-  if (!electricalDataValid || (dhtSelected && !temperatureDataValid)) {
-    reason = "SENSOR_INVALID";
+  if (!electricalDataValid) {
+    reason = "PZEM_SENSOR_FAULT";
+    return true;
+  }
+  if (dhtSelected && !temperatureDataValid) {
+    reason = "DHT_SENSOR_FAULT";
     return true;
   }
 
@@ -801,7 +805,7 @@ void evaluateAutomaticRelay() {
       setRelayOutput(false, "MANUAL_ON_BLOCKED");
       return;
     }
-    setRelayDecision("ON", "MANUAL_ON_ALLOWED_BY_LATEST_PZEM");
+    setRelayDecision("ON", "MANUAL_ON_ALLOWED_SENSOR_VALID_WARMUP");
     setRelayOutput(true, "MANUAL_ON_REQUESTED");
     return;
   }
