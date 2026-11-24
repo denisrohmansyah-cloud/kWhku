@@ -437,3 +437,60 @@ input,select,textarea{max-width:100%;min-width:0}
 #page-alarmSettings .alarm-threshold-grid .field{background:#0d1b2d}
 @media(max-width:900px){#page-alarmSettings{padding:14px}#page-alarmSettings .relay-compact-status{grid-template-columns:1fr}#page-alarmSettings .relay-live-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){#page-alarmSettings>.panel{padding:14px}#page-alarmSettings .relay-live-meta{grid-template-columns:1fr 1fr}#page-alarmSettings .relay-history-toolbar{align-items:stretch}#page-alarmSettings .relay-history-toolbar .field{flex:1}#page-alarmSettings .relay-manual-card{align-items:flex-start}}
+/* Relay page structural redesign — based on approved black control mockup */
+#page-alarmSettings .relay-redesign{background:#050607!important;border:1px solid #24272b!important;border-radius:24px!important;color:#f2f4f7!important;padding:26px!important;box-shadow:0 20px 55px rgba(0,0,0,.3)!important}
+#page-alarmSettings .relay-redesign .relay-redesign-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:26px}
+#page-alarmSettings .relay-kicker{font-size:10px;letter-spacing:.18em;font-weight:800;color:#00c978}
+#page-alarmSettings .relay-redesign h3{font-size:25px;margin:7px 0 5px;color:#f4f6fa}
+#page-alarmSettings .relay-redesign-head p{margin:0;color:#9ca3af}
+#page-alarmSettings .relay-redesign-overview{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}
+#page-alarmSettings .relay-output-card,#page-alarmSettings .relay-mode-card{min-height:190px;background:#080b0d;border:1px solid #222b31;border-radius:17px;padding:22px;display:flex;flex-direction:column;align-items:flex-start}
+#page-alarmSettings .relay-card-label{font-size:12px;letter-spacing:.12em;color:#aeb8c5;font-weight:800}
+#page-alarmSettings .relay-output-card>strong{font-size:52px;line-height:1.1;margin:13px 0 6px;color:#00d978}
+#page-alarmSettings .relay-output-card>strong[data-state="OFF"]{color:#ff5968}
+#page-alarmSettings .relay-output-card .sub{color:#a0aab7;max-width:100%;line-height:1.45}
+#page-alarmSettings .relay-output-indicator{margin-top:auto;display:flex;align-items:center;gap:8px;color:#a8b2bf;font-size:11px}
+#page-alarmSettings .relay-output-indicator i{width:8px;height:8px;border-radius:50%;background:#00d978;box-shadow:0 0 12px #00d978}
+#page-alarmSettings .relay-mode-card>strong{font-size:26px;margin:10px 0 0;color:#f4f6fa}
+#page-alarmSettings .relay-mode-description{color:#aeb8c5;font-size:13px}
+#page-alarmSettings .relay-mode-switch{display:flex;gap:7px;margin-top:16px;padding:5px;background:#11161b;border:1px solid #27313b;border-radius:999px}
+#page-alarmSettings .relay-mode-button{border:0!important;background:transparent!important;color:#8793a1!important;border-radius:999px!important;padding:9px 22px!important;font-size:12px;font-weight:800}
+#page-alarmSettings .relay-mode-button.is-active{background:#27313a!important;color:#fff!important;box-shadow:inset 0 0 0 1px #3a4652}
+#page-alarmSettings .relay-enable{display:flex;align-items:center;gap:9px;margin-top:auto;padding-top:13px;color:#aeb8c5;font-size:12px;cursor:pointer}
+#page-alarmSettings .relay-enable input{accent-color:#00c978;width:16px;height:16px}
+#page-alarmSettings .relay-admin-select{width:100%;margin-top:12px}
+#page-alarmSettings .relay-manual-section{margin:0 0 20px}
+#page-alarmSettings .relay-section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+#page-alarmSettings .relay-section-heading h4{margin:0;color:#f1f4f7;font-size:18px}
+#page-alarmSettings .relay-section-heading>span{font-size:11px;color:#9ca8b6}
+#page-alarmSettings .relay-command-buttons{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#page-alarmSettings .relay-command{min-height:142px;border-radius:16px!important;border:1px solid transparent!important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+#page-alarmSettings .relay-command:not(:disabled):hover{transform:translateY(-2px)}
+#page-alarmSettings .relay-command:disabled{opacity:.34;cursor:not-allowed}
+#page-alarmSettings .relay-command-on{background:#001a10!important;border-color:#064b30!important;color:#00d978!important}
+#page-alarmSettings .relay-command-off{background:#1b0508!important;border-color:#51202a!important;color:#ff5968!important}
+#page-alarmSettings .relay-power-symbol{font-size:28px;line-height:1}
+#page-alarmSettings .relay-command strong{font-size:23px;color:inherit}
+#page-alarmSettings .relay-command small{font-size:13px;color:inherit}
+#page-alarmSettings .relay-hidden-toggle{display:none}
+#page-alarmSettings .relay-decision-panel{padding:17px 19px;border-radius:15px;background:#171307;border:1px solid #4b3b12;margin:18px 0;color:#e8d7a4}
+#page-alarmSettings .relay-decision-panel .relay-section-heading h4{color:#f4e5b8}
+#page-alarmSettings .relay-decision-panel p{color:#cbbd98;margin:8px 0 14px;line-height:1.5}
+#page-alarmSettings .relay-decision-chip{padding:5px 10px;border-radius:99px;background:#30270d;color:#f8ce62}
+#page-alarmSettings .relay-decision-metrics{display:flex;flex-wrap:wrap;gap:22px}
+#page-alarmSettings .relay-decision-metrics>div{display:flex;flex-direction:column;gap:4px}
+#page-alarmSettings .relay-decision-metrics small{color:#aa9a73}
+#page-alarmSettings .relay-decision-metrics strong{color:#f2dfaa}
+#page-alarmSettings .relay-redesign .relay-advanced{background:#0b1015;border-color:#29333d}
+#page-alarmSettings .relay-redesign .relay-advanced summary{color:#e7edf5}
+#page-alarmSettings .relay-redesign .relay-check,#page-alarmSettings .relay-redesign .alarm-switch-card,#page-alarmSettings .relay-redesign .relay-status-card{background:#101820;border-color:#2a3946;color:#e9eff7}
+#page-alarmSettings .relay-redesign .relay-check b,#page-alarmSettings .relay-redesign .alarm-switch-card strong{color:#e9eff7}
+#page-alarmSettings .relay-redesign .relay-check small,#page-alarmSettings .relay-redesign .alarm-switch-card small{color:#9ba9b9}
+#page-alarmSettings .relay-redesign .field input,#page-alarmSettings .relay-redesign .field select{background:#080e14!important;color:#f2f5fa!important;border-color:#334453!important}
+#page-alarmSettings .relay-redesign .relay-save-row{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin:18px 0}
+#page-alarmSettings .relay-redesign #saveRelayConfig{background:#e51c2a!important;color:#fff!important;border-color:#e51c2a!important;padding:13px 20px}
+#page-alarmSettings .relay-redesign .relay-safety-note{background:#15110a;border-color:#57431b;color:#e4c27a;padding:13px 15px;border-radius:12px}
+#page-alarmSettings .relay-redesign .relay-auto-info{background:#06251a;border:1px solid #0b6642;color:#8cf0bd;border-radius:12px;padding:14px}
+#page-alarmSettings .relay-admin-select{padding:0;background:transparent;border:0}
+@media(max-width:700px){#page-alarmSettings .relay-redesign{padding:17px!important}#page-alarmSettings .relay-redesign-overview{grid-template-columns:1fr}#page-alarmSettings .relay-output-card,#page-alarmSettings .relay-mode-card{min-height:165px}#page-alarmSettings .relay-command{min-height:120px}#page-alarmSettings .relay-redesign-head{flex-direction:column}}
+@media(max-width:440px){#page-alarmSettings .relay-command-buttons{grid-template-columns:1fr}#page-alarmSettings .relay-section-heading{align-items:flex-start;flex-direction:column}}
