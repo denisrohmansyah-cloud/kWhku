@@ -800,6 +800,38 @@ function getRelayStatus(session,targetId){
    updatedAt:cmd&&cmd.ackAt?new Date(cmd.ackAt).toISOString():cmd&&cmd.createdAt?new Date(cmd.createdAt).toISOString():''};
  })};
 }
+
+function getRelayHistory(session,targetId,limit){
+ const user=validateSession_(session);if(!user.ok)return user;
+ const customers=getRows_('Pelanggan').filter(c=>truthy_(c.active));
+ const selected=user.role==='ADMIN'
+  ?customers.filter(c=>!targetId||String(c.customerId)===String(targetId))
+  :customers.filter(c=>String(c.customerId)===String(user.customerId));
+ const allowed=new Map(selected.map(c=>[String(c.customerId)+'|'+String(c.meterId),c]));
+ if(!allowed.size)return{ok:true,rows:[]};
+ ensureRelaySheets_();
+ const max=Math.max(1,Math.min(100,Number(limit)||50));
+ const events=relayRows_('events').filter(x=>allowed.has(String(x.customerId)+'|'+String(x.meterId))).map(x=>({
+  timestamp:x.timestamp instanceof Date?x.timestamp.toISOString():String(x.timestamp||''),
+  customerId:String(x.customerId||''),meterId:String(x.meterId||''),
+  type:String(x.event||'EVENT'),state:String(x.state||''),reason:String(x.reason||''),
+  source:String(x.source||''),detail:String(x.detail||''),commandId:''
+ }));
+ const commands=relayRows_('commands').filter(x=>allowed.has(String(x.customerId)+'|'+String(x.meterId))).map(x=>({
+  timestamp:x.createdAt instanceof Date?x.createdAt.toISOString():String(x.createdAt||''),
+  customerId:String(x.customerId||''),meterId:String(x.meterId||''),
+  type:'COMMAND_'+String(x.status||'UNKNOWN').toUpperCase(),
+  state:String(x.actualState||x.desiredState||''),reason:String(x.reason||''),
+  source:String(x.createdBy||''),detail:String(x.detail||''),
+  commandId:String(x.commandId||''),mode:String(x.mode||''),
+  desiredState:String(x.desiredState||''),status:String(x.status||''),
+  ackAt:x.ackAt instanceof Date?x.ackAt.toISOString():String(x.ackAt||'')
+ }));
+ const rows=events.concat(commands).filter(x=>x.timestamp&&Number.isFinite(new Date(x.timestamp).getTime()));
+ rows.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+ return{ok:true,rows:rows.slice(0,max),total:rows.length,limit:max};
+}
+
 function setRelayCommand_(session,mode,state,targetId) {
   const user = validateSession_(session);
   if (!user.ok) return user;
@@ -1395,6 +1427,7 @@ function handleApi_(body){
       case 'getMonitoring': return getMonitoring(a[0],a[1]);
       case 'getAlarmConfig': return getAlarmConfig(a[0],a[1]);
       case 'getRelayStatus': return getRelayStatus(a[0],a[1]);
+      case 'getRelayHistory': return getRelayHistory(a[0],a[1],a[2]);
       case 'getTelegramLinkStatus': return getTelegramLinkStatus_(a[0]);
       case 'createTelegramLinkCode': return createTelegramLinkCode_(a[0]);
       case 'unlinkTelegram': return unlinkTelegram_(a[0]);
