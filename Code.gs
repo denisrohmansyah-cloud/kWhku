@@ -1465,7 +1465,7 @@ function evaluateMultiParameterTelegramAlert_(r){
       ['frequency_low','Frekuensi rendah',r.frequencyHz,'Hz','≥ '+cfg.minFrequencyHz+' Hz',v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1,cfg.alarmFrequencyMinEnabled],
       ['frequency_high','Frekuensi tinggi',r.frequencyHz,'Hz','≤ '+cfg.maxFrequencyHz+' Hz',v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1,cfg.alarmFrequencyMaxEnabled],
       ['pf_low','Power factor rendah',r.powerFactor,'','≥ '+cfg.minPowerFactor,v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03,cfg.alarmPowerFactorMinEnabled],
-      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+cfg.maxTemperatureC+' °C',v=>v>=cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1,cfg.alarmTemperatureMaxEnabled],
+      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+cfg.maxTemperatureC+' °C',v=>v>cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1,cfg.alarmTemperatureMaxEnabled],
       ['humidity_low','Kelembapan rendah',r.humidityPct,'%','≥ '+cfg.minHumidityPct+'%',v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2,cfg.alarmHumidityMinEnabled],
       ['humidity_high','Kelembapan tinggi',r.humidityPct,'%','≤ '+cfg.maxHumidityPct+'%',v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2,cfg.alarmHumidityMaxEnabled]
     ];
