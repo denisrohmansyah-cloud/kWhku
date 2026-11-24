@@ -692,6 +692,7 @@ function syncRelayAlarmFlags_(customerId,flags){
   const headers=SHEETS.alarmConfig[1];
   headers.forEach((key,i)=>{if(RELAY_ALARM_FLAG_KEYS_.includes(key))alarmSheet.getRange(ai+2,i+1).setValue(truthy_(flags[key]));});
  }
+ relayConfigFor_(id); // Ensure the paired relay row exists before synchronizing flags.
  ensureRelaySheets_();
  const relaySheet=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.config[0]);
  const relayRows=relayRows_('config');
