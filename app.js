@@ -386,7 +386,7 @@ async function loadTelegramLinkStatus(){
  if(badge){badge.textContent='MEMERIKSA';badge.className='badge amber'}
  try{
   const r=await api('getTelegramLinkStatus',session);
-  if(!r?.ok)throw Error(r?.message||'Gagal memeriksa tautan Telegram');
+  if(!r?.ok){const message=r?.message||'Gagal memeriksa tautan Telegram';if(message==='Operasi tidak dikenal.')throw Error('Apps Script belum diperbarui. Deploy Code.gs versi terbaru yang memiliki getTelegramLinkStatus.');throw Error(message);}
   badge.textContent=r.linked?'TERHUBUNG':'BELUM TERHUBUNG';
   badge.className='badge '+(r.linked?'':'amber');
   state.textContent=r.linked?'Akun Telegram sudah tertaut':'Belum ada akun Telegram yang tertaut';
@@ -404,7 +404,7 @@ async function loadTelegramLinkStatus(){
 $('refreshTelegramLink')?.addEventListener('click',()=>loadTelegramLinkStatus().catch(()=>{}));
 $('createTelegramLink')?.addEventListener('click',async()=>{
  const b=$('createTelegramLink');b.disabled=true;b.textContent='Membuat kode…';
- try{const r=await api('createTelegramLinkCode',session);if(!r?.ok)throw Error(r?.message||'Gagal membuat kode');
+ try{const r=await api('createTelegramLinkCode',session);if(!r?.ok){const message=r?.message||'Gagal membuat kode';if(message==='Operasi tidak dikenal.')throw Error('Apps Script belum diperbarui. Deploy Code.gs versi terbaru yang memiliki createTelegramLinkCode.');throw Error(message);}
   $('telegramLinkCode').textContent='/link '+r.code;$('telegramCodeWrap').classList.remove('hidden');
   $('telegramLinkExpiry').textContent='Kode berlaku '+r.expiresInMinutes+' menit. Gunakan kode sebelum kedaluwarsa.';
   $('openTelegramBot').href='https://t.me/'+encodeURIComponent(String(r.botUsername||'kWhKuMonitoringBot').replace(/^@/,''));
@@ -431,7 +431,7 @@ async function loadRelayHistory(){
  try{
   const limit=Number($('relayHistoryLimit')?.value||50);
   const result=await api('getRelayHistory',session,relaySelectedCustomer(),limit);
-  if(!result?.ok)throw Error(result?.message||'Gagal memuat riwayat relay');
+  if(!result?.ok){const message=result?.message||'Gagal memuat riwayat relay';if(message==='Operasi tidak dikenal.')throw Error('Apps Script belum diperbarui. Deploy Code.gs versi terbaru yang memiliki getRelayHistory, lalu muat ulang halaman.');throw Error(message);}
   const rows=Array.isArray(result.rows)?result.rows:[];
   $('relayHistorySummary').textContent=rows.length+' catatan ditampilkan · maksimum '+limit+' catatan';
   state.textContent=rows.length?'Riwayat terbaru ditampilkan di bawah.':'Belum ada riwayat kontrol untuk perangkat ini.';
