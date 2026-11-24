@@ -462,7 +462,7 @@ function syncRelayControls(){
  if(toggle)toggle.disabled=automatic||!enabled||!modeSaved||!fresh||pending||relayCommandInFlight;
  $('relayManualControl').classList.toggle('is-disabled',automatic||!enabled||!modeSaved||!fresh);
  $('relayAutoInfo').classList.toggle('hidden',!automatic);
- const resetAvailable=automatic&&enabled&&modeSaved&&fresh&&$('relayAutoRecover').checked===false&&String(relayCurrentRow?.decisionReason||'').includes('AUTO_NORMAL_MANUAL_RESET_REQUIRED');
+ const resetAvailable=automatic&&enabled&&modeSaved&&fresh&&$('relayAutoRecover').checked===false&&relayCurrentRow?.relayConfig?.autoRecover===false&&String(relayCurrentRow?.decisionReason||'').includes('AUTO_NORMAL_MANUAL_RESET_REQUIRED');
  $('relayAutoResetWrap').classList.toggle('hidden',!resetAvailable);
  $('relayAutoReset').disabled=!resetAvailable||pending||relayCommandInFlight;
  $('relayManualControl').classList.toggle('hidden',automatic);
