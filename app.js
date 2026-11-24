@@ -537,6 +537,13 @@ function syncRelayControls(){
  const toggle=$('relayManualToggle');
  if(toggle)toggle.disabled=automatic||!enabled||!modeSaved||!fresh||pending||relayCommandInFlight;
  $('relayManualControl').classList.toggle('is-disabled',automatic||!enabled||!modeSaved||!fresh);
+ const onButton=$('relayVisualOn'),offButton=$('relayVisualOff');
+ const commandReady=!automatic&&enabled&&modeSaved&&fresh&&!pending&&!relayCommandInFlight;
+ if(onButton)onButton.disabled=!commandReady||String(relayCurrentRow?.outputState||'')==='ON';
+ if(offButton)offButton.disabled=!commandReady||String(relayCurrentRow?.outputState||'')==='OFF';
+ document.querySelectorAll('[data-relay-mode]').forEach(button=>button.classList.toggle('is-active',button.dataset.relayMode===(automatic?'AUTO':'MANUAL')));
+ const modeDescription=$('relayModeDescription');if(modeDescription)modeDescription.textContent=automatic?'Otomatis berdasarkan kondisi sensor dan alarm':'Kontrol pengguna';
+
  $('relayAutoInfo').classList.toggle('hidden',!automatic);
  const resetAvailable=automatic&&enabled&&modeSaved&&fresh&&$('relayAutoRecover').checked===false&&relayCurrentRow?.relayConfig?.autoRecover===false&&String(relayCurrentRow?.decisionReason||'').includes('AUTO_NORMAL_MANUAL_RESET_REQUIRED');
  $('relayAutoResetWrap').classList.toggle('hidden',!resetAvailable);
@@ -547,6 +554,13 @@ function syncRelayControls(){
  $('relayEnabled').disabled=false;
 }
 
+document.querySelectorAll('[data-relay-mode]').forEach(button=>button.addEventListener('click',()=>{
+ const mode=button.dataset.relayMode;if(!mode)return;
+ $('relayMode').value=mode;syncRelayControls();
+}));
+$('relayVisualOn')?.addEventListener('click',()=>{if($('relayManualToggle').disabled)return;$('relayManualToggle').checked=true;$('relayManualToggle').dispatchEvent(new Event('change',{bubbles:true}))});
+$('relayVisualOff')?.addEventListener('click',()=>{if($('relayManualToggle').disabled)return;$('relayManualToggle').checked=false;$('relayManualToggle').dispatchEvent(new Event('change',{bubbles:true}))});
+$('relayMode')?.addEventListener('change',syncRelayControls);
 $('relayMode')?.addEventListener('change',syncRelayControls);
 $('relayEnabled')?.addEventListener('change',syncRelayControls);
 $('relayCustomer')?.addEventListener('change',()=>loadRelaySettings().catch(e=>toast(e.message||e)));
