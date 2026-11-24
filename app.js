@@ -462,6 +462,9 @@ function syncRelayControls(){
  if(toggle)toggle.disabled=automatic||!enabled||!modeSaved||!fresh||pending||relayCommandInFlight;
  $('relayManualControl').classList.toggle('is-disabled',automatic||!enabled||!modeSaved||!fresh);
  $('relayAutoInfo').classList.toggle('hidden',!automatic);
+ const resetAvailable=automatic&&enabled&&modeSaved&&fresh&&$('relayAutoRecover').checked===false&&String(relayCurrentRow?.decisionReason||'').includes('AUTO_NORMAL_MANUAL_RESET_REQUIRED');
+ $('relayAutoResetWrap').classList.toggle('hidden',!resetAvailable);
+ $('relayAutoReset').disabled=!resetAvailable||pending||relayCommandInFlight;
  $('relayManualControl').classList.toggle('hidden',automatic);
  if($('relayManualStatus')&&enabled&&!modeSaved)$('relayManualStatus').textContent='Simpan perubahan mode terlebih dahulu sebelum mengendalikan relay.';
  $('relayMode').disabled=false;
@@ -512,6 +515,29 @@ $('relayManualToggle')?.addEventListener('change',async()=>{
  }
 });
 
+$('relayAutoReset')?.addEventListener('click',async()=>{
+ const id=relaySelectedCustomer();
+ if(!id||!relayCurrentRow||$('relayMode').value!=='AUTO'||$('relayAutoRecover').checked!==false){
+  toast('Reset hanya tersedia pada mode AUTO dengan pemulihan manual.');return;
+ }
+ if(!confirm('Reset trip AUTO dan izinkan relay kembali ON? Pastikan kondisi listrik dan beban telah diperiksa.'))return;
+ relayCommandInFlight=true;syncRelayControls();
+ $('relayAutoReset').textContent='Memproses reset…';
+ try{
+  const result=await api('setRelayCommand',session,'AUTO_RESET','ON',id);
+  if(!result?.ok)throw Error(result?.message||'Permintaan reset gagal dikirim');
+  toast(result.message||'Permintaan reset dikirim');
+  for(let attempt=0;attempt<6;attempt++){
+   await loadRelayStatus();
+   const status=String(relayCurrentRow?.commandStatus||'').toUpperCase();
+   if(status==='ACKNOWLEDGED'||status==='FAILED')break;
+   await new Promise(resolve=>setTimeout(resolve,700));
+  }
+  if(String(relayCurrentRow?.commandStatus||'').toUpperCase()==='FAILED')toast('Reset ditolak ESP32. Periksa alasan keputusan relay.');
+ }catch(error){toast(error.message||String(error))}
+ finally{relayCommandInFlight=false;$('relayAutoReset').textContent='Reset trip AUTO';syncRelayControls()}
+});
+$('relayAutoRecover')?.addEventListener('change',syncRelayControls);
 $('saveRelayConfig')?.addEventListener('click',async()=>{
  const id=relaySelectedCustomer();if(!id){toast('Pilih pelanggan perangkat terlebih dahulu.');return}
  const payload={enabled:$('relayEnabled').checked,mode:$('relayMode').value,alarmVoltageMinEnabled:$('relayAlarmVoltageMin').checked,alarmVoltageMaxEnabled:$('relayAlarmVoltageMax').checked,alarmCurrentMaxEnabled:$('relayAlarmCurrent').checked,alarmPowerMaxEnabled:$('relayAlarmPower').checked,alarmFrequencyMinEnabled:$('relayAlarmFrequencyMin').checked,alarmFrequencyMaxEnabled:$('relayAlarmFrequencyMax').checked,alarmPowerFactorMinEnabled:$('relayAlarmPF').checked,alarmTemperatureMaxEnabled:$('relayAlarmTemperature').checked,alarmHumidityMinEnabled:$('relayAlarmHumidityMin').checked,alarmHumidityMaxEnabled:$('relayAlarmHumidityMax').checked,autoRecover:$('relayAutoRecover').checked,recoverStableSeconds:Number($('relayStableSeconds').value)};
