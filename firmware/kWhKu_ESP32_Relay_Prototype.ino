@@ -552,6 +552,15 @@ void processManualCommand(JsonObjectConst command) {
   }
   lastProcessedCommandId = id;
 
+  if (desired != "ON" && desired != "OFF") {
+    manualRequestedState = "OFF";
+    setRelayDecision("OFF", "INVALID_MANUAL_COMMAND_STATE");
+    setRelayOutput(false, "INVALID_MANUAL_COMMAND_STATE");
+    lastProcessedCommandDetail = "Ditolak: state perintah harus ON atau OFF.";
+    acknowledgeRelayCommand(id, lastProcessedCommandDetail);
+    return;
+  }
+
   if (desired == "OFF") {
     manualRequestedState = "OFF";
     setRelayDecision("OFF", "WEBSITE_MANUAL_OFF_REQUEST");
