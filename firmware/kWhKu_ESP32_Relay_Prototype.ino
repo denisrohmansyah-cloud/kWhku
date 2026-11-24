@@ -65,7 +65,7 @@ static const uint32_t READING_UPLOAD_INTERVAL_MS = 60000;
 static const uint32_t RELAY_POLL_INTERVAL_MS = 1500;
 static const uint32_t RELAY_HEARTBEAT_INTERVAL_MS = 4000;
 static const uint32_t WIFI_RETRY_INTERVAL_MS = 15000;
-static const uint32_t LCD_PAGE_INTERVAL_MS = 3000;
+static const uint32_t LCD_PAGE_INTERVAL_MS = 2500;
 static const uint32_t HTTP_TIMEOUT_MS = 10000;
 
 // ---------------- DEVICES ----------------
@@ -889,37 +889,39 @@ String lcdStatusText() {
 }
 
 void updateLcd() {
-  lcd.clear();
-  if (!dashboardDataValid) {
-    printLcdLine(0, "Dashboard sync...");
-    printLcdLine(1, WiFi.status() == WL_CONNECTED ? "Menunggu data" : "Wi-Fi Offline");
-    return;
-  }
-
+  // Pengukuran lokal selalu diprioritaskan agar LCD tetap berguna saat cloud offline.
   switch (lcdPage) {
     case 0:
-      printLcdLine(0, "V:" + String(dashboardVoltageV, 1) + " A:" + String(dashboardCurrentA, 2));
-      printLcdLine(1, "P:" + String(dashboardPowerW, 1) + " PF:" + String(dashboardPowerFactor, 2));
+      printLcdLine(0, electricalDataValid
+        ? "V:" + String(voltageV, 1) + " A:" + String(currentA, 2)
+        : "PZEM: Sensor Error");
+      printLcdLine(1, electricalDataValid
+        ? "P:" + String(powerW, 1) + " PF:" + String(powerFactor, 2)
+        : "Data lokal invalid");
       break;
 
     case 1:
-      printLcdLine(0, "Energi:" + String(dashboardEnergyMonthKwh, 2) + "kWh");
-      printLcdLine(1, "Biaya:Rp" + String((unsigned long)(dashboardCostMonthRp + 0.5f)));
+      printLcdLine(0, dashboardDataValid
+        ? "Energi:" + String(dashboardEnergyMonthKwh, 2) + "kWh"
+        : "Energi bln: --");
+      printLcdLine(1, dashboardDataValid
+        ? "Biaya:Rp" + String((unsigned long)(dashboardCostMonthRp + 0.5f))
+        : "Biaya: cloud --");
       break;
 
     case 2:
-      if (dashboardTemperatureValid) {
-        printLcdLine(0, "Suhu:" + String(dashboardTemperatureC, 1) + " C");
-        printLcdLine(1, "Kelembapan:" + String(dashboardHumidityPct, 0) + "%");
+      if (temperatureDataValid) {
+        printLcdLine(0, "Suhu:" + String(temperatureC, 1) + " C");
+        printLcdLine(1, "Kelembapan:" + String(humidityPct, 0) + "%");
       } else {
-        printLcdLine(0, "Suhu: --");
-        printLcdLine(1, "Kelembapan: --");
+        printLcdLine(0, "DHT11: Sensor Error");
+        printLcdLine(1, "Suhu/Kelembapan --");
       }
       break;
 
     case 3:
       printLcdLine(0, WiFi.status() == WL_CONNECTED ? "Wi-Fi: Online" : "Wi-Fi: Offline");
-      printLcdLine(1, String("Dashboard:") + (dashboardOnline ? "Online" : "Offline"));
+      printLcdLine(1, String("Cloud:") + (dashboardDataValid ? "Ada snapshot" : "Belum ada data"));
       break;
 
     case 4:
@@ -929,7 +931,9 @@ void updateLcd() {
 
     default:
       printLcdLine(0, "Tarif Rp/kWh");
-      printLcdLine(1, String((unsigned long)(dashboardTariffRpPerKwh + 0.5f)));
+      printLcdLine(1, dashboardDataValid
+        ? String((unsigned long)(dashboardTariffRpPerKwh + 0.5f))
+        : String("Cloud: data --"));
       break;
   }
   lcdPage = (lcdPage + 1) % 6;
@@ -991,13 +995,13 @@ void loop() {
       Serial.printf("[OTA] Siap: hostname=%s IP=%s port=3232\\n",
         OTA_HOSTNAME, WiFi.localIP().toString().c_str());
     } else {
-      Serial.println("[OTA] Belum aktif: atur OTA_PASSWORD minimal 12 karakter.");
+      Serial.println("[OTA] Belum aktif: atur OTA_PASSWORD minimal 8 karakter.");
       otaStarted = true; // Hindari spam log; firmware tetap berjalan normal.
     }
   }
   if (otaStarted && WiFi.status() == WL_CONNECTED &&
       String(OTA_PASSWORD) != "CHANGE_THIS_OTA_PASSWORD" &&
-      String(OTA_PASSWORD).length() >= 12) {
+      String(OTA_PASSWORD).length() >= 8) {
     ArduinoOTA.handle();
   }
 
