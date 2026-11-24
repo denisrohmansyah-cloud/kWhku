@@ -8,7 +8,7 @@
  * - Keep independent fuse/overcurrent protection in the low-voltage test circuit.
  *
  * Required libraries:
- *   PZEM004Tv30 by Jakub Mandula
+ *   PZEM-004T V4 Modbus RTU (native UART reader)
  *   DHT sensor library by Adafruit
  *   LiquidCrystal_I2C
  *   ArduinoJson (v6/v7)
