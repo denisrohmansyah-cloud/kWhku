@@ -507,7 +507,26 @@ void applyRelayConfig(JsonObjectConst cfg) {
   next.autoRecover = cfg["autoRecover"] | true;
   next.recoverStableSeconds = cfg["recoverStableSeconds"] | 60;
 
-  const bool modeChanged = relayConfigValid && next.mode != relayConfig.mode;
+  const bool configChanged = relayConfigValid && (
+    next.enabled != relayConfig.enabled || next.mode != relayConfig.mode ||
+    next.alarmVoltageMinEnabled != relayConfig.alarmVoltageMinEnabled ||
+    next.alarmVoltageMaxEnabled != relayConfig.alarmVoltageMaxEnabled ||
+    next.alarmCurrentMaxEnabled != relayConfig.alarmCurrentMaxEnabled ||
+    next.alarmPowerMaxEnabled != relayConfig.alarmPowerMaxEnabled ||
+    next.alarmFrequencyMinEnabled != relayConfig.alarmFrequencyMinEnabled ||
+    next.alarmFrequencyMaxEnabled != relayConfig.alarmFrequencyMaxEnabled ||
+    next.alarmPowerFactorMinEnabled != relayConfig.alarmPowerFactorMinEnabled ||
+    next.alarmTemperatureMaxEnabled != relayConfig.alarmTemperatureMaxEnabled ||
+    next.alarmHumidityMinEnabled != relayConfig.alarmHumidityMinEnabled ||
+    next.alarmHumidityMaxEnabled != relayConfig.alarmHumidityMaxEnabled ||
+    next.minVoltageV != relayConfig.minVoltageV || next.maxVoltageV != relayConfig.maxVoltageV ||
+    next.maxCurrentA != relayConfig.maxCurrentA || next.maxPowerW != relayConfig.maxPowerW ||
+    next.minFrequencyHz != relayConfig.minFrequencyHz || next.maxFrequencyHz != relayConfig.maxFrequencyHz ||
+    next.minPowerFactor != relayConfig.minPowerFactor || next.maxTemperatureC != relayConfig.maxTemperatureC ||
+    next.minHumidityPct != relayConfig.minHumidityPct || next.maxHumidityPct != relayConfig.maxHumidityPct ||
+    next.autoRecover != relayConfig.autoRecover ||
+    next.recoverStableSeconds != relayConfig.recoverStableSeconds
+  );
   relayConfig = next;
   relayConfigValid = true;
 
@@ -523,8 +542,8 @@ void applyRelayConfig(JsonObjectConst cfg) {
     manualRequestedState = "OFF";
     setRelayDecision("UNKNOWN", "INVALID_RELAY_MODE");
     setRelayOutput(false, "INVALID_RELAY_MODE");
-  } else if (modeChanged) {
-    // A mode transition never carries the previous ON state across modes.
+  } else if (configChanged) {
+    // Any interlock/configuration change invalidates the previous ON permission and stability timer.
     autoTripLatched = true;
     normalSinceMs = 0;
     manualRequestedState = "OFF";
