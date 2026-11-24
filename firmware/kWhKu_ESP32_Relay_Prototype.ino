@@ -28,6 +28,7 @@
  */
 
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -40,6 +41,9 @@
 // ---------------- USER CONFIGURATION ----------------
 static const char* WIFI_SSID = "YOUR_WIFI_SSID";
 static const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+// Ganti dengan password OTA pribadi (minimal 12 karakter); jangan gunakan password Wi-Fi.
+static const char* OTA_PASSWORD = "CHANGE_THIS_OTA_PASSWORD";
+static const char* OTA_HOSTNAME = "kWhKu-ESP32-001";
 static const char* APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIegsiM_A3M4EtqOHTnHDCPv8pI4GR36mihZWrn5VL0qJaEr_94VPySe-LPxZzHgCzig/exec";
 static const char* DEVICE_API_KEY = "YOUR_DEVICE_API_KEY";
 static const char* CUSTOMER_ID = "PLG-001";
@@ -251,6 +255,7 @@ void safeRelayStartup() {
 }
 
 bool wifiConnectionInProgress = false;
+bool otaStarted = false;
 uint32_t wifiConnectStartedMs = 0;
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
 
@@ -963,6 +968,38 @@ void loop() {
   const uint32_t now = millis();
 
   connectWiFiNonBlocking();
+
+  // Start OTA only after Wi-Fi is connected; keep the service available on every loop.
+  if (WiFi.status() == WL_CONNECTED && !otaStarted) {
+    if (String(OTA_PASSWORD).length() >= 12 &&
+        String(OTA_PASSWORD) != "CHANGE_THIS_OTA_PASSWORD") {
+      ArduinoOTA.setHostname(OTA_HOSTNAME);
+      ArduinoOTA.setPassword(OTA_PASSWORD);
+      ArduinoOTA.onStart([]() {
+        Serial.println("[OTA] Update dimulai; relay diperintahkan OFF selama proses update.");
+        setRelayOutput(false, "OTA_UPDATE_IN_PROGRESS");
+      });
+      ArduinoOTA.onEnd([]() { Serial.println("\\n[OTA] Update selesai; ESP32 akan restart."); });
+      ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("[OTA] Progress: %u%%\\r", (progress * 100U) / total);
+      });
+      ArduinoOTA.onError([](ota_error_t error) {
+        Serial.printf("[OTA] Error[%u].\\n", error);
+      });
+      ArduinoOTA.begin();
+      otaStarted = true;
+      Serial.printf("[OTA] Siap: hostname=%s IP=%s port=3232\\n",
+        OTA_HOSTNAME, WiFi.localIP().toString().c_str());
+    } else {
+      Serial.println("[OTA] Belum aktif: atur OTA_PASSWORD minimal 12 karakter.");
+      otaStarted = true; // Hindari spam log; firmware tetap berjalan normal.
+    }
+  }
+  if (otaStarted && WiFi.status() == WL_CONNECTED &&
+      String(OTA_PASSWORD) != "CHANGE_THIS_OTA_PASSWORD" &&
+      String(OTA_PASSWORD).length() >= 12) {
+    ArduinoOTA.handle();
+  }
 
   if (now - lastSensorReadMs >= SENSOR_INTERVAL_MS) {
     lastSensorReadMs = now;
