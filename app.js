@@ -125,7 +125,7 @@ function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
   if(p!=='history'&&selId){selId='';$('historySearch').value=''}
-  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e));loadRelaySettings().catch(e=>toast(e.message||e))}}
+  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e));loadRelaySettings().catch(e=>toast(e.message||e));if(!admin())loadTelegramLinkStatus().catch(e=>toast(e.message||e))}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
@@ -376,6 +376,29 @@ $('resetCalculationPeriod').onclick=async()=>{
 };
 $('resetMyData').onclick=async()=>{if(admin())return;if(!confirm('Reset akan menghapus riwayat pembacaan dan rekap pemakaian akun Anda dari sistem. Tindakan ini tidak dapat dibatalkan. Lanjutkan?'))return;if(!confirm('Konfirmasi terakhir: hapus semua data pembacaan listrik milik akun Anda?'))return;try{const res=await api('resetCustomerData',session);if(!res?.ok)throw Error(res?.message||'Reset gagal');toast('Data pembacaan berhasil direset');await refresh()}catch(err){toast(err.message||String(err))}};
 
+
+
+async function loadTelegramLinkStatus(){
+ if(!session||admin())return;
+ const r=await api('getTelegramLinkStatus',session);if(!r?.ok)throw Error(r?.message||'Gagal memeriksa tautan Telegram');
+ $('telegramLinkBadge').textContent=r.linked?'TERHUBUNG':'BELUM TERHUBUNG';
+ $('telegramLinkBadge').className='badge '+(r.linked?'':'amber');
+ $('telegramLinkState').textContent=r.linked?'Akun Telegram sudah tertaut':'Belum ada akun Telegram yang tertaut';
+ $('telegramLinkInfo').textContent=r.linked?'Username Telegram: '+(r.username?'@'+r.username:'tidak tersedia'):'Buat kode lalu kirim /link KODE ke bot.';
+ $('unlinkTelegram').disabled=!r.linked;
+}
+$('createTelegramLink')?.addEventListener('click',async()=>{
+ const b=$('createTelegramLink');b.disabled=true;b.textContent='Membuat kode…';
+ try{const r=await api('createTelegramLinkCode',session);if(!r?.ok)throw Error(r?.message||'Gagal membuat kode');
+  $('telegramLinkCode').textContent=r.code;$('telegramCodeWrap').classList.remove('hidden');
+  $('telegramLinkExpiry').textContent='Kode berlaku '+r.expiresInMinutes+' menit. Buka bot @'+r.botUsername+' lalu kirim /link '+r.code;
+ }catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent='Buat kode tautan'}
+});
+$('copyTelegramCode')?.addEventListener('click',()=>{const code=$('telegramLinkCode').textContent;if(code&&code!=='------'){navigator.clipboard?.writeText('/link '+code).then(()=>toast('Perintah /link berhasil disalin')).catch(()=>toast('Salin kode secara manual: /link '+code))}});
+$('unlinkTelegram')?.addEventListener('click',async()=>{
+ if(!confirm('Putuskan tautan akun Telegram dari pelanggan ini?'))return;
+ try{const r=await api('unlinkTelegram',session);if(!r?.ok)throw Error(r?.message||'Gagal memutus tautan');$('telegramCodeWrap').classList.add('hidden');await loadTelegramLinkStatus();toast(r.message)}catch(e){toast(e.message||String(e))}
+});
 
 function relaySelectedCustomer(){return admin()?String($('relayCustomer')?.value||''):String(session?.customerId||'')}
 let relayCurrentRow=null;
