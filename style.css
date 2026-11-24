@@ -494,3 +494,22 @@ input,select,textarea{max-width:100%;min-width:0}
 #page-alarmSettings .relay-admin-select{padding:0;background:transparent;border:0}
 @media(max-width:700px){#page-alarmSettings .relay-redesign{padding:17px!important}#page-alarmSettings .relay-redesign-overview{grid-template-columns:1fr}#page-alarmSettings .relay-output-card,#page-alarmSettings .relay-mode-card{min-height:165px}#page-alarmSettings .relay-command{min-height:120px}#page-alarmSettings .relay-redesign-head{flex-direction:column}}
 @media(max-width:440px){#page-alarmSettings .relay-command-buttons{grid-template-columns:1fr}#page-alarmSettings .relay-section-heading{align-items:flex-start;flex-direction:column}}
+/* Matching history and Telegram sections to the relay control visual system */
+#page-alarmSettings .relay-history-panel,#page-alarmSettings .telegram-link-panel{background:#080b0e!important;color:#edf2f7!important;border:1px solid #27313b!important;border-radius:20px!important;box-shadow:0 16px 42px rgba(0,0,0,.18)!important;padding:24px!important}
+#page-alarmSettings .relay-history-panel .panel-head h3,#page-alarmSettings .telegram-link-panel .panel-head h3{color:#f2f5f8!important}
+#page-alarmSettings .relay-history-panel .panel-head p,#page-alarmSettings .telegram-link-panel .panel-head p,#page-alarmSettings .relay-history-panel .sub,#page-alarmSettings .telegram-link-panel .sub{color:#9eabb9!important}
+#page-alarmSettings .relay-history-panel .field span{color:#aab6c4!important}
+#page-alarmSettings .relay-history-panel select,#page-alarmSettings .relay-history-panel button.secondary,#page-alarmSettings .telegram-link-panel button.secondary{background:#111922!important;color:#e8eef5!important;border:1px solid #334252!important}
+#page-alarmSettings .relay-history-panel .table-wrap{border:1px solid #263441;border-radius:12px;overflow:auto}
+#page-alarmSettings .relay-history-table{background:#080d12!important;color:#e8edf3!important;min-width:720px}
+#page-alarmSettings .relay-history-table thead th{background:#121a22!important;color:#9eacbb!important;border-bottom:1px solid #33404c!important}
+#page-alarmSettings .relay-history-table td{background:#0a1016!important;color:#d8e0e9!important;border-bottom:1px solid #202c37!important}
+#page-alarmSettings .relay-history-state{background:#101820!important;color:#aebdcb!important;border:1px solid #273644!important;border-radius:10px;padding:12px 14px;margin:12px 0}
+#page-alarmSettings .telegram-link-row{background:#0d141b!important;border:1px solid #293743!important;border-radius:14px;padding:16px}
+#page-alarmSettings .telegram-link-row strong{color:#f1f5f9!important}
+#page-alarmSettings .telegram-link-row small,#page-alarmSettings .telegram-link-help{color:#9eacba!important}
+#page-alarmSettings .telegram-code-wrap{background:#061b15!important;border:1px solid #0b6241!important;border-radius:14px;padding:16px;margin-top:14px}
+#page-alarmSettings .telegram-code-wrap strong{color:#00df86!important;letter-spacing:.12em;font-size:24px}
+#page-alarmSettings .telegram-code-wrap small{color:#a3cbbb!important}
+#page-alarmSettings .telegram-link-panel .button-link{background:#17232d!important;color:#e8f0f7!important;border:1px solid #354655!important}
+@media(max-width:680px){#page-alarmSettings .relay-history-panel,#page-alarmSettings .telegram-link-panel{padding:16px!important}#page-alarmSettings .relay-history-toolbar,#page-alarmSettings .telegram-link-row{display:flex;flex-direction:column;align-items:stretch;gap:12px}#page-alarmSettings .telegram-link-actions{display:flex;flex-wrap:wrap;gap:8px}}
