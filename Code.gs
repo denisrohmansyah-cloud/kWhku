@@ -464,7 +464,23 @@ function ensureRawReadingColumns_(sheet) {
   sheet.showColumns(12, 6);
   const headers = sheet.getRange(1,12,1,6).getValues()[0];
   const ready = RAW_READING_HEADERS_.every((h,i)=>headers[i]===h);
-  if (ready) return;
+  if (ready) {
+    // Perbarui formula/format tampilan lama hanya jika presisinya belum dua desimal.
+    // Kolom raw L:Q tidak pernah ditulis ulang pada jalur ini.
+    const lastRow = lastReadingRow_(sheet);
+    if (lastRow >= 2) {
+      const rawCols = ['L','M','N','O','P','Q'];
+      const expectedFormulas = rawCols.map(col=>'=TRUNC('+col+'2,2)');
+      const formulas = sheet.getRange(2,4,1,6).getFormulas()[0];
+      const formats = sheet.getRange(2,4,1,6).getNumberFormats()[0];
+      const needsDisplayRefresh = expectedFormulas.some((f,i)=>formulas[i]!==f) ||
+        formats.some(f=>f!=='0.00');
+      if (needsDisplayRefresh) {
+        for (let row=2; row<=lastRow; row++) setReadingDisplayRow_(sheet,row);
+      }
+    }
+    return;
+  }
 
   sheet.getRange(1,12,1,6).setValues([RAW_READING_HEADERS_]);
   const lastRow = lastReadingRow_(sheet);
@@ -1707,8 +1723,8 @@ function testTelegramAlarmParameters(){
     '• Frekuensi tinggi: <b>50.60 Hz</b> <i>(batas ≤ 50.5 Hz)</i>',
     '• Power factor rendah: <b>0.80</b> <i>(batas ≥ 0.85)</i>',
     '• Suhu tinggi: <b>31 °C</b> <i>(batas ≤ 30 °C)</i>',
-    '• Kelembapan rendah: <b>39%</b> <i>(batas ≥ 40%)</i>',
-    '• Kelembapan tinggi: <b>71%</b> <i>(batas ≤ 70%)</i>',
+    '• Kelembapan rendah: <b>39,00 %</b> <i>(batas ≥ 40,00 %)</i>',
+    '• Kelembapan tinggi: <b>71,00 %</b> <i>(batas ≤ 70,00 %)</i>',
     '',
     '━━━━━━━━━━━━━━━━━━',
     '🕒 <b>Jenis:</b> Pengujian simulasi',
