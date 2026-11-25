@@ -1249,7 +1249,7 @@ function evaluateTemperatureTelegramAlert_(reading) {
       'Perangkat: ' + reading.deviceId + '\n' +
       'Suhu: ' + telegramDisplayNumber_(reading.temperatureC,2) + ' °C\n' +
       'Ambang: ' + telegramDisplayNumber_(threshold,2) + ' °C\n' +
-      'Kelembapan: ' + telegramDisplayNumber_(reading.humidityPct,2) + '%\n' +
+      'Kelembapan: ' + telegramDisplayNumber_(reading.humidityPct,2) +' %\n' +
       'Waktu: ' + time
     );
     if (result.ok) cache.put(key,'1',21600);
