@@ -592,7 +592,14 @@ function doPost(e) {
   try {
     assertConfigured_();
     const body=JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if(body.update_id!==undefined&&body.message){const expected=PropertiesService.getScriptProperties().getProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET');const supplied=e&&e.parameter?String(e.parameter.kwhku_secret||''):'';if(!expected||!safeEqual_(expected,supplied))return json_({ok:false,message:'Unauthorized webhook'});const props=PropertiesService.getScriptProperties(),last=Number(props.getProperty('KWHKU_TELEGRAM_LAST_UPDATE')||0);if(Number(body.update_id)<=last)return json_({ok:true,duplicate:true});handleTelegramUpdate_(body);props.setProperty('KWHKU_TELEGRAM_LAST_UPDATE',String(body.update_id));return json_({ok:true});}
+    if(body.update_id!==undefined&&body.message){
+      const expected=PropertiesService.getScriptProperties().getProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET');
+      const supplied=e&&e.parameter?String(e.parameter.kwhku_secret||''):'';
+      if(!expected||!safeEqual_(expected,supplied))return json_({ok:false,message:'Unauthorized webhook'});
+      const props=PropertiesService.getScriptProperties(),lock=LockService.getUserLock();lock.waitLock(10000);
+      try{const last=Number(props.getProperty('KWHKU_TELEGRAM_LAST_UPDATE')||0);if(Number(body.update_id)<=last)return json_({ok:true,duplicate:true});handleTelegramUpdate_(body);props.setProperty('KWHKU_TELEGRAM_LAST_UPDATE',String(body.update_id));return json_({ok:true});}
+      finally{lock.releaseLock();}
+    }
     if (body.fn === 'getDeviceConfig') return json_(getDeviceAlarmConfig_(body));
     if (body.fn === 'getLcdDashboard') return json_(getDeviceLcdDashboard_(body));
     if (body.relayAction) return json_(relayDeviceApi_(body));
@@ -935,7 +942,7 @@ function relayDeviceApi_(body){if(!safeEqual_(String(body.apiKey||''),CONFIG.DEV
  }
  const fresh=x&&String(x.status)==='PENDING'&&age<=120000;
  return{ok:true,command:fresh?{commandId:String(x.commandId),mode:String(x.mode),desiredState:String(x.desiredState),status:String(x.status)}:null,relayConfig:relayConfigFor_(c)};
-}if(body.relayAction==='ack'){const id=String(body.commandId||''),reportedState=String(body.outputState||body.actualState||''),state=['ON','OFF'].includes(reportedState)?reportedState:'UNKNOWN',rows=relayRows_('commands'),i=rows.findIndex(x=>String(x.commandId)===id&&String(x.customerId)===c&&String(x.meterId)===m);if(i<0)return{ok:false,message:'Command tidak ditemukan.'};const desired=String(rows[i].desiredState||'').toUpperCase();const matched=desired===state;if(String(rows[i].status)==='ACKNOWLEDGED'&&matched)return{ok:true,alreadyAcknowledged:true};const now=new Date(),sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);const ackStatus=matched?'ACKNOWLEDGED':'FAILED';const detail=String(body.detail||'').slice(0,180)+(matched?'':' | STATE_MISMATCH: diminta '+desired+', dilaporkan '+state);sh.getRange(i+2,9,1,4).setValues([[ackStatus,now,state,detail]]);upsertRelayStatus_(c,m,state,detail,String(body.decisionState||'UNKNOWN'),String(body.decisionReason||'').slice(0,180),body);relayLog_(c,m,matched?'COMMAND_ACK':'COMMAND_STATE_MISMATCH',state,matched?'Konfirmasi ESP32 sesuai perintah':'State output tidak sesuai state yang diminta','ESP32',id);return matched?{ok:true}:{ok:false,message:'State output tidak sesuai perintah.',expected:desired,actual:state}}if(body.relayAction==='status'){const state=['ON','OFF'].includes(String(body.outputState||body.actualState))?String(body.outputState||body.actualState):'UNKNOWN';upsertRelayStatus_(c,m,state,String(body.detail||'').slice(0,180),String(body.decisionState||'UNKNOWN'),String(body.decisionReason||'').slice(0,180),body);return{ok:true,receivedAt:new Date().toISOString()}}return{ok:false,message:'Aksi relay tidak dikenal.'}}
+}if(body.relayAction==='ack'){const id=String(body.commandId||''),reportedState=String(body.outputState||body.actualState||''),state=['ON','OFF'].includes(reportedState)?reportedState:'UNKNOWN',rows=relayRows_('commands'),i=rows.findIndex(x=>String(x.commandId)===id&&String(x.customerId)===c&&String(x.meterId)===m);if(i<0)return{ok:false,message:'Command tidak ditemukan.'};const desired=String(rows[i].desiredState||'').toUpperCase();const matched=desired===state;if(String(rows[i].status)==='ACKNOWLEDGED'&&matched)return{ok:true,alreadyAcknowledged:true};const now=new Date(),sh=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);const ackStatus=matched?'ACKNOWLEDGED':'FAILED';const detail=String(body.detail||'').slice(0,180)+(matched?'':' | STATE_MISMATCH: diminta '+desired+', dilaporkan '+state);sh.getRange(i+2,9,1,4).setValues([[ackStatus,now,state,detail]]);upsertRelayStatus_(c,m,state,detail,String(body.decisionState||'UNKNOWN'),String(body.decisionReason||'').slice(0,180),body);relayLog_(c,m,matched?'COMMAND_ACK':'COMMAND_STATE_MISMATCH',state,matched?'Konfirmasi ESP32 sesuai perintah':'State output tidak sesuai state yang diminta','ESP32',id);notifyTelegramRelayAck_(c,id,matched,state,detail);return matched?{ok:true}:{ok:false,message:'State output tidak sesuai perintah.',expected:desired,actual:state}}if(body.relayAction==='status'){const state=['ON','OFF'].includes(String(body.outputState||body.actualState))?String(body.outputState||body.actualState):'UNKNOWN';upsertRelayStatus_(c,m,state,String(body.detail||'').slice(0,180),String(body.decisionState||'UNKNOWN'),String(body.decisionReason||'').slice(0,180),body);return{ok:true,receivedAt:new Date().toISOString()}}return{ok:false,message:'Aksi relay tidak dikenal.'}}
 
 function hashPin_(pin) {
   const props=PropertiesService.getScriptProperties();
@@ -1212,25 +1219,32 @@ function telegramProperties_() {
   };
 }
 
-function telegramSend_(message, parseMode) {
-  const cfg = telegramProperties_();
-  if (!cfg.token || !cfg.chatIds.length) {
-    console.warn('Telegram belum dikonfigurasi: isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS.');
-    return {ok:false,message:'Telegram belum dikonfigurasi.'};
+function telegramSend_(message, parseMode, customerId) {
+  const cfg=telegramProperties_();
+  const destinations=cfg.chatIds.slice();
+  if(customerId){
+    const links=telegramLinkMap_();
+    Object.keys(links).forEach(chatId=>{
+      if(String(links[chatId].customerId)===String(customerId))destinations.push(String(chatId));
+    });
   }
-  const url = 'https://api.telegram.org/bot' + cfg.token + '/sendMessage';
-  const results = cfg.chatIds.map(chatId => {
-    const response = UrlFetchApp.fetch(url, {
-      method:'post',
-      contentType:'application/json',
-      payload:JSON.stringify(Object.assign({chat_id:chatId,text:message,disable_web_page_preview:true}, parseMode ? {parse_mode:parseMode} : {})),
+  const unique=Array.from(new Set(destinations));
+  if(!cfg.token||!unique.length){
+    console.warn('Telegram belum dikonfigurasi: isi TELEGRAM_BOT_TOKEN atau tautkan akun pelanggan.');
+    return{ok:false,message:'Telegram belum dikonfigurasi untuk penerima ini.'};
+  }
+  const url='https://api.telegram.org/bot'+cfg.token+'/sendMessage';
+  const results=unique.map(chatId=>{
+    const response=UrlFetchApp.fetch(url,{
+      method:'post',contentType:'application/json',
+      payload:JSON.stringify(Object.assign({chat_id:chatId,text:message,disable_web_page_preview:true},parseMode?{parse_mode:parseMode}:{})),
       muteHttpExceptions:true
     });
-    const status = response.getResponseCode();
-    if (status < 200 || status >= 300) console.error('Telegram sendMessage gagal:',status,response.getContentText());
-    return {chatId,status};
+    const status=response.getResponseCode();
+    if(status<200||status>=300)console.error('Telegram sendMessage gagal:',status,response.getContentText());
+    return{chatId,status};
   });
-  return {ok:results.every(x=>x.status>=200&&x.status<300),results};
+  return{ok:results.every(x=>x.status>=200&&x.status<300),results};
 }
 
 function evaluateTemperatureTelegramAlert_(reading) {
@@ -1253,7 +1267,7 @@ function evaluateTemperatureTelegramAlert_(reading) {
       'Ambang: ' + telegramDisplayNumber_(threshold,2) + ' °C\n' +
       'Kelembapan: ' + telegramDisplayNumber_(reading.humidityPct,2) +' %\n' +
       'Waktu: ' + time
-    );
+    , null, reading.customerId);
     if (result.ok) cache.put(key,'1',21600);
   } else if (isAlert && wasAlert) {
     // Pengingat berkala maksimal sekali setiap 30 menit selama kondisi tinggi.
@@ -1266,7 +1280,7 @@ function evaluateTemperatureTelegramAlert_(reading) {
         'Suhu: ' + telegramDisplayNumber_(reading.temperatureC,2) + ' °C (ambang ' + telegramDisplayNumber_(threshold,2) + ' °C)\n' +
         'Kelembapan: ' + telegramDisplayNumber_(reading.humidityPct,2) + ' %\n' +
         'Waktu: ' + time
-      );
+      , null, reading.customerId);
       if (result.ok) cache.put(reminderKey,'1',1800);
     }
   } else if (!isAlert && wasAlert && reading.temperatureC <= threshold - 1) {
@@ -1277,7 +1291,7 @@ function evaluateTemperatureTelegramAlert_(reading) {
       'Suhu: ' + telegramDisplayNumber_(reading.temperatureC,2) + ' °C\n' +
       'Ambang peringatan: ' + telegramDisplayNumber_(threshold,2) + ' °C\n' +
       'Waktu: ' + time
-    );
+    , null, reading.customerId);
     if (result.ok) {
       cache.remove(key);
       cache.remove(key + '_reminder');
@@ -1407,65 +1421,116 @@ function unlinkTelegram_(session){
  return{ok:true,message:'Akun Telegram berhasil diputus dari akun pelanggan.'};
 }
 function queueTelegramRelayCommand_(customerId,mode,state,chatId){
- const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId)&&truthy_(x.active));
- if(!c)return{ok:false,message:'Pelanggan tidak aktif.'};
- const cfg=relayConfigFor_(customerId),isReset=mode==='AUTO_RESET';
- if(!cfg.enabled)return{ok:false,message:'Kendali relay belum diaktifkan di dashboard.'};
- if(isReset?(cfg.mode!=='AUTO'||cfg.autoRecover):(cfg.mode!=='MANUAL'||!['ON','OFF'].includes(state)))return{ok:false,message:'Perintah tidak sesuai mode relay saat ini.'};
- ensureRelaySheets_();const id='RLY-TG-'+Utilities.getUuid(),now=new Date();
- SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]).appendRow([id,customerId,c.meterId,isReset?'AUTO_RESET':'MANUAL',isReset?'ON':state,'Perintah Telegram',now,'TELEGRAM:'+chatId,'PENDING','','','']);
- relayLog_(customerId,c.meterId,'TELEGRAM_COMMAND_QUEUED',isReset?'RESET':state,'Perintah relay melalui Telegram','TELEGRAM',id);
- return{ok:true,commandId:id,message:'Perintah masuk antrean ESP32. Pantau status dengan /status.'};
+ const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId)&&truthy_(x.active));if(!c)return{ok:false,message:'Pelanggan tidak aktif.'};
+ const cfg=relayConfigFor_(customerId),isReset=mode==='AUTO_RESET',requested=String(state||'').toUpperCase();
+ if(!['ON','OFF'].includes(requested)&&!isReset)return{ok:false,message:'State relay tidak valid.'};
+ if(requested==='ON'&&(!cfg.enabled||cfg.mode!=='MANUAL'))return{ok:false,message:'Perintah ON hanya tersedia ketika kendali aktif dan mode MANUAL.'};
+ if(requested==='OFF'&&cfg.mode!=='MANUAL'&&cfg.mode!=='AUTO')return{ok:false,message:'Mode relay tidak valid; perintah OFF ditolak server.'};
+ if(isReset&&(!cfg.enabled||cfg.mode!=='AUTO'||cfg.autoRecover))return{ok:false,message:'RESET hanya tersedia pada mode AUTO dengan pemulihan manual.'};
+ ensureRelaySheets_();const lock=LockService.getScriptLock();lock.waitLock(10000);
+ try{
+  const rows=relayRows_('status'),current=rows.find(x=>String(x.customerId)===String(customerId)&&String(x.meterId)===String(c.meterId));
+  const age=current&&current.lastReportedAt?Date.now()-new Date(current.lastReportedAt).getTime():Infinity,fresh=Number.isFinite(age)&&age>=0&&age<=15000;
+  if((requested==='ON'||isReset)&&!fresh)return{ok:false,message:'Status ESP32 tidak terbaru (heartbeat lebih dari 15 detik). Perintah ON/RESET ditahan.'};
+  if(isReset&&String(current.outputState)!=='OFF')return{ok:false,message:'RESET ditahan: output relay harus terkonfirmasi OFF terlebih dahulu.'};
+  const latest=latestRelayCommand_(customerId,c.meterId);
+  if(latest&&String(latest.status).toUpperCase()==='PENDING'){
+   const created=new Date(latest.createdAt).getTime(),pendingAge=Date.now()-created;
+   const commandSheet=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);
+   const all=relayRows_('commands'),index=all.findIndex(x=>String(x.commandId)===String(latest.commandId));
+   if(!Number.isFinite(created)||pendingAge<0||pendingAge<=120000){
+    if(requested!=='OFF'||String(latest.desiredState).toUpperCase()==='OFF')
+     return{ok:false,status:'PENDING',commandId:String(latest.commandId||''),message:'Masih ada perintah yang menunggu konfirmasi ESP32. Tunggu sampai selesai.'};
+    // OFF has priority: supersede an unconfirmed ON/RESET request.
+    if(index>=0)commandSheet.getRange(index+2,9).setValue('SUPERSEDED');
+    relayLog_(customerId,c.meterId,'COMMAND_SUPERSEDED','OFF','Perintah OFF Telegram memprioritaskan perintah sebelumnya yang belum dikonfirmasi','TELEGRAM',String(latest.commandId));
+   }else{
+    if(index>=0)commandSheet.getRange(index+2,9).setValue('EXPIRED');
+    relayLog_(customerId,c.meterId,'COMMAND_EXPIRED',String(latest.desiredState||''),'Perintah Telegram kedaluwarsa setelah 120 detik','SERVER',String(latest.commandId));
+   }
+  }
+  const id='RLY-TG-'+Utilities.getUuid(),now=new Date();
+  SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]).appendRow([id,customerId,c.meterId,isReset?'AUTO_RESET':'MANUAL',isReset?'ON':requested,isReset?'Reset manual trip AUTO':'Perintah Telegram '+requested,now,'TELEGRAM:'+chatId,'PENDING','','','']);
+  relayLog_(customerId,c.meterId,isReset?'TELEGRAM_AUTO_RESET_QUEUED':'TELEGRAM_COMMAND_QUEUED',isReset?'RESET':requested,isReset?'Permintaan reset trip AUTO melalui Telegram':'Perintah relay '+requested+' melalui Telegram','TELEGRAM',id);
+  return{ok:true,commandId:id,status:'PENDING',message:'Perintah '+(isReset?'RESET':requested)+' masuk antrean. Menunggu ESP32 mengambil dan mengonfirmasi.'};
+ }finally{lock.releaseLock();}
 }
+
+function notifyTelegramRelayAck_(customerId,commandId,matched,actualState,detail){
+ const map=telegramLinkMap_(),chatId=Object.keys(map).find(id=>String(map[id].customerId)===String(customerId));if(!chatId)return;
+ telegramReply_(chatId,(matched?'Perintah relay TERKONFIRMASI':'Perintah relay GAGAL')+'\nCommand: '+commandId+'\nOutput GPIO: '+actualState+'\nDetail: '+String(detail||'—').slice(0,220)+'\nKirim /status untuk melihat kondisi terbaru.');
+}
+
 function telegramReply_(chatId,text,keyboard){
  const cfg=telegramProperties_();if(!cfg.token)return;
  const payload={chat_id:String(chatId),text:text,disable_web_page_preview:true};
  if(keyboard)payload.reply_markup={keyboard:keyboard,resize_keyboard:true};
  UrlFetchApp.fetch('https://api.telegram.org/bot'+cfg.token+'/sendMessage',{method:'post',contentType:'application/json',payload:JSON.stringify(payload),muteHttpExceptions:true});
 }
+
 function telegramCustomerStatus_(customerId){
- const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId));if(!c)return null;
- const rows=getRows_('Data_Listrik').filter(x=>String(x.customerId)===String(customerId)).sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp));
- const r=rows[0]||null,relay= getRelayStatus(createInternalCustomerSession_(customerId),customerId);
- const rr=relay&&relay.rows&&relay.rows[0]||{};
- return{customer:c,reading:r,relay:rr};
+ const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId)&&truthy_(x.active));if(!c)return null;
+ const session=createInternalCustomerSession_(customerId);
+ if(!session)return{customer:c,reading:null,relay:{outputState:'UNKNOWN',decisionState:'UNKNOWN',commandStatus:'NO_SESSION'},fresh:false};
+ const relay=getRelayStatus(session,customerId),rr=relay&&relay.ok&&relay.rows&&relay.rows[0]||{};
+ const age=rr.statusAgeSeconds===null||rr.statusAgeSeconds===undefined?Infinity:Number(rr.statusAgeSeconds),fresh=Number.isFinite(age)&&age<=15;
+ return{customer:c,reading:fresh?rr:null,relay:rr,fresh:fresh};
 }
+
 function createInternalCustomerSession_(customerId){
  const c=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId));if(!c)return null;
  const user=getRows_('Users').find(x=>String(x.customerId)===String(customerId)&&String(x.role).toUpperCase()==='PELANGGAN'&&truthy_(x.active));if(!user)return null;
  return createSession_({role:'PELANGGAN',username:user.username,name:user.name||c.name,customerId:customerId});
 }
 function handleTelegramUpdate_(update){
- const msg=update&&update.message;if(!msg||!msg.chat)return;
- const chatId=String(msg.chat.id),textMsg=String(msg.text||'').trim(),parts=textMsg.split(/\\s+/),command=(parts[0]||'').split('@')[0].toLowerCase(),arg=parts[1]||'';
- const map=telegramLinkMap_();
+ const msg=update&&update.message;if(!msg||!msg.chat||msg.chat.type!=='private')return;
+ const chatId=String(msg.chat.id),textMsg=String(msg.text||'').trim(),parts=textMsg.split(/\s+/);
+ const command=(parts[0]||'').split('@')[0].toLowerCase(),arg=parts[1]||'',map=telegramLinkMap_();
  if(command==='/start'||command==='/link'){
-  if(arg&&/^\\d{6}$/.test(arg)){
-   const props=PropertiesService.getScriptProperties(),raw=props.getProperty('KWHKU_TG_CODE_'+arg);
-   if(!raw){telegramReply_(chatId,'Kode pengaitan tidak ditemukan atau sudah digunakan. Buat kode baru dari dashboard.');return}
-   const data=JSON.parse(raw);if(Date.now()>data.expiresAt){props.deleteProperty('KWHKU_TG_CODE_'+arg);telegramReply_(chatId,'Kode sudah kedaluwarsa. Buat kode baru dari dashboard.');return}
-   Object.keys(map).forEach(id=>{if(String(map[id].customerId)===String(data.customerId))delete map[id]});
-   map[chatId]={customerId:data.customerId,username:data.username,telegramUsername:msg.from&&msg.from.username||'',linkedAt:new Date().toISOString()};
-   saveTelegramLinkMap_(map);props.deleteProperty('KWHKU_TG_CODE_'+arg);
-   telegramReply_(chatId,'✅ Akun Telegram berhasil ditautkan ke pelanggan '+data.customerId+'. Gunakan /help untuk melihat perintah.',[['/status','/relay'],['/on','/off'],['/mode','/help']]);return;
+  if(arg&&/^\d{6}$/.test(arg)){
+   const lock=LockService.getScriptLock();lock.waitLock(10000);
+   try{const props=PropertiesService.getScriptProperties(),raw=props.getProperty('KWHKU_TG_CODE_'+arg);
+    if(!raw){telegramReply_(chatId,'Kode pengaitan tidak ditemukan atau sudah digunakan.');return}
+    const data=JSON.parse(raw);if(Date.now()>Number(data.expiresAt)){props.deleteProperty('KWHKU_TG_CODE_'+arg);telegramReply_(chatId,'Kode sudah kedaluwarsa. Buat kode baru.');return}
+    Object.keys(map).forEach(id=>{if(String(map[id].customerId)===String(data.customerId))delete map[id]});
+    map[chatId]={customerId:data.customerId,username:data.username,telegramUsername:msg.from&&msg.from.username||'',linkedAt:new Date().toISOString()};
+    saveTelegramLinkMap_(map);props.deleteProperty('KWHKU_TG_CODE_'+arg);
+   }finally{lock.releaseLock()}
+   telegramReply_(chatId,'Akun Telegram berhasil ditautkan. Gunakan /help.',[['/status','/relay'],['/on CONFIRM','/off'],['/reset CONFIRM','/mode'],['/help','/unlink']]);return;
   }
-  telegramReply_(chatId,'Selamat datang di bot kWh-Ku. Untuk menghubungkan akun, buat kode dari dashboard lalu kirim /link KODE.');return;
+  telegramReply_(chatId,'Selamat datang di bot kWh-Ku. Buat kode pengaitan dari dashboard, lalu kirim /link KODE.');return;
  }
- const link=map[chatId];if(!link){telegramReply_(chatId,'Akun belum tertaut. Masuk ke dashboard kWh-Ku, buat kode Telegram, lalu kirim /link KODE.');return}
- const status=telegramCustomerStatus_(link.customerId);if(!status){telegramReply_(chatId,'Akun pelanggan tidak ditemukan atau tidak aktif.');return}
- if(command==='/help'){telegramReply_(chatId,'Perintah kWh-Ku:\n/status — data sensor dan relay\n/relay — status output relay\n/on — minta relay ON (mode MANUAL)\n/off — minta relay OFF (mode MANUAL)\n/mode — melihat mode operasi\n/unlink — putuskan tautan akun.',[['/status','/relay'],['/on','/off'],['/mode','/help']]);return}
+ const link=map[chatId];if(!link){telegramReply_(chatId,'Akun belum tertaut. Hubungkan melalui dashboard dengan /link KODE.');return}
  if(command==='/unlink'){delete map[chatId];saveTelegramLinkMap_(map);telegramReply_(chatId,'Tautan akun Telegram telah diputus.');return}
- if(command==='/mode'){telegramReply_(chatId,'Mode relay: '+(status.relay.mode||'UNKNOWN')+'\nKendali: '+(status.relay.enabled?'AKTIF':'NONAKTIF'));return}
+ if(command==='/help'){telegramReply_(chatId,'PERINTAH kWh-Ku\n/status — data sensor terbaru dan status relay\n/relay — status output relay\n/mode — mode MANUAL/AUTO\n/on CONFIRM — minta relay ON (MANUAL)\n/off — minta relay OFF (prioritas OFF)\n/reset CONFIRM — reset trip AUTO (pemulihan manual)\n/unlink — putuskan akun Telegram.\nON dan RESET tetap diperiksa interlock firmware.',[['/status','/relay'],['/on CONFIRM','/off'],['/reset CONFIRM','/mode'],['/help','/unlink']]);return}
+ const status=telegramCustomerStatus_(link.customerId);if(!status){telegramReply_(chatId,'Pelanggan tidak aktif atau tidak ditemukan.');return}
+ const rr=status.relay||{};
+ if(command==='/mode'){telegramReply_(chatId,'Mode relay: '+(rr.mode||'UNKNOWN')+'\nKendali: '+(rr.enabled?'AKTIF':'NONAKTIF')+'\nStatus perangkat: '+(status.fresh?'ONLINE':'STALE/OFFLINE'));return}
+ if(command==='/history'){
+  const rows=getRows_('Data_Listrik').filter(x=>String(x.customerId)===String(link.customerId))
+   .sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp)).slice(0,5);
+  if(!rows.length){telegramReply_(chatId,'Belum ada riwayat pengukuran untuk pelanggan ini.');return}
+  const lines=rows.map(x=>{
+   const stamp=new Date(x.receivedAt||x.timestamp);
+   const when=Number.isFinite(stamp.getTime())?Utilities.formatDate(stamp,CONFIG.TIME_ZONE,'dd/MM HH:mm'):'Waktu tidak diketahui';
+   return when+' | '+telegramDisplayNumber_(x.voltageV,2)+' V | '+telegramDisplayNumber_(x.currentA,2)+' A | '+telegramDisplayNumber_(x.powerW,2)+' W | '+telegramDisplayNumber_(x.energyKwh,2)+' kWh';
+  });
+  telegramReply_(chatId,'RIWAYAT 5 PEMBACAAN TERAKHIR\\n'+lines.join('\\n'));return;
+ }
  if(command==='/status'||command==='/relay'){
-  const r=status.reading,rr=status.relay,age=r?Math.max(0,Math.floor((Date.now()-new Date(r.receivedAt||r.timestamp).getTime())/60000)):null;
-  telegramReply_(chatId,'⚡ kWh-Ku | '+status.customer.name+'\nPerangkat: '+status.customer.meterId+'\nTegangan: '+(r?telegramDisplayNumber_(r.voltageV,2)+' V':'—')+'\nArus: '+(r?telegramDisplayNumber_(r.currentA,2)+' A':'—')+'\nDaya: '+(r?telegramDisplayNumber_(r.powerW,2)+' W':'—')+'\nEnergi: '+(r?telegramDisplayNumber_(r.energyKwh,2)+' kWh':'—')+'\nSuhu: '+(r&&r.temperatureC!==undefined?telegramDisplayNumber_(r.temperatureC,2)+' °C':'lihat dashboard')+'\nData terakhir: '+(age===null?'belum ada':age+' menit lalu')+'\n\nRelay: '+(rr.outputState||'UNKNOWN')+'\nMode: '+(rr.mode||'UNKNOWN')+'\nKeputusan: '+(rr.decisionState||'UNKNOWN')+'\nAlasan: '+(rr.decisionReason||'—')+'\nStatus perintah: '+(rr.commandStatus||'NO_COMMAND'));return;
+  const r=status.reading,age=rr.statusAgeSeconds;
+  const sensorLine=r?'Tegangan: '+telegramDisplayNumber_(r.voltageV,2)+' V\nArus: '+telegramDisplayNumber_(r.currentA,2)+' A\nDaya: '+telegramDisplayNumber_(r.powerW,2)+' W\nEnergi: '+telegramDisplayNumber_(r.energyKwh,2)+' kWh\nFrekuensi: '+telegramDisplayNumber_(r.frequencyHz,2)+' Hz\nFaktor daya: '+telegramDisplayNumber_(r.powerFactor,2)+'\nSuhu: '+telegramDisplayNumber_(r.temperatureC,2)+' °C\nKelembapan: '+telegramDisplayNumber_(r.humidityPct,2)+' %':'Data sensor tidak tersedia: heartbeat ESP32 lebih dari 15 detik atau belum pernah diterima.';
+  const relayLine='\n\nRELAY CH1\nOutput GPIO: '+(rr.outputState||'UNKNOWN')+'\nMode: '+(rr.mode||'UNKNOWN')+'\nKendali: '+(rr.enabled?'AKTIF':'NONAKTIF')+'\nKeputusan: '+(rr.decisionState||'UNKNOWN')+'\nAlasan: '+(rr.decisionReason||'—')+'\nPerintah terakhir: '+(rr.commandStatus||'NO_COMMAND')+'\nUsia heartbeat: '+(age===null||age===undefined?'—':age+' detik');
+  telegramReply_(chatId,'kWh-Ku\nPelanggan: '+status.customer.name+'\nPerangkat: '+status.customer.meterId+'\nStatus data: '+(status.fresh?'ONLINE':'STALE/OFFLINE')+'\n\nDATA SENSOR\n'+sensorLine+relayLine);return;
  }
- if(command==='/on'||command==='/off'){
-  const result=queueTelegramRelayCommand_(link.customerId,'MANUAL',command==='/on'?'ON':'OFF',chatId);
-  telegramReply_(chatId,(result.ok?'✅ ':'⚠️ ')+result.message);return;
- }
+ if(command==='/off'){const result=queueTelegramRelayCommand_(link.customerId,'MANUAL','OFF',chatId);telegramReply_(chatId,(result.ok?'Perintah OFF: ':'Gagal: ')+result.message);return}
+ if(command==='/on'){if(arg!=='CONFIRM'){telegramReply_(chatId,'Relay ON memerlukan konfirmasi. Kirim /on CONFIRM setelah memastikan beban dan kondisi sistem aman.');return}
+  const result=queueTelegramRelayCommand_(link.customerId,'MANUAL','ON',chatId);telegramReply_(chatId,(result.ok?'Perintah ON: ':'Gagal: ')+result.message);return}
+ if(command==='/reset'){if(arg!=='CONFIRM'){telegramReply_(chatId,'RESET AUTO memerlukan konfirmasi. Kirim /reset CONFIRM setelah memastikan seluruh kondisi sensor normal.');return}
+  const result=queueTelegramRelayCommand_(link.customerId,'AUTO_RESET','ON',chatId);telegramReply_(chatId,(result.ok?'Perintah RESET: ':'Gagal: ')+result.message);return}
  telegramReply_(chatId,'Perintah tidak dikenal. Kirim /help.');
 }
+
 function setupTelegramWebhook(){
  const cfg=telegramProperties_();if(!cfg.token)throw new Error('TELEGRAM_BOT_TOKEN belum diatur.');
  const baseUrl=ScriptApp.getService().getUrl();if(!baseUrl)throw new Error('Deploy Apps Script sebagai Web App terlebih dahulu.');
@@ -1578,7 +1643,7 @@ function checkEsp32OfflineAll(){
     updateDeviceStatus_(id,meter,'OFFLINE',last,'Tidak ada data ESP32 melewati '+CONFIG.MAX_AGE_MINUTES_ONLINE+' menit.');
     const minutes=Math.floor(age/60000),when=Utilities.formatDate(last,CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss');
     const msg='<b>🚨 kWh-KU DEVICE ALERT</b>\n━━━━━━━━━━━━━━━━━━━━\n🔴 <b>STATUS: ESP32 OFFLINE</b>\n\n👤 <b>Pelanggan:</b> '+alarmHtml_(customer.name||id)+'\n🆔 <b>ID:</b> '+alarmHtml_(id)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(meter)+'\n\n⚠️ Tidak ada data diterima selama <b>'+minutes+' menit</b>.\n🕒 <b>Data terakhir:</b> '+when+'\n\n<b>Periksa:</b>\n• Catu daya ESP32\n• Koneksi Wi-Fi dan internet\n• Pengiriman ke Google Apps Script\n━━━━━━━━━━━━━━━━━━━━';
-    const sent=telegramSend_(msg,'HTML');results.push({customerId:id,offline:true,telegram:sent});
+    const sent=telegramSend_(msg,'HTML',id);results.push({customerId:id,offline:true,telegram:sent});
   });
   return {ok:results.every(x=>!x.telegram||x.telegram.ok),results:results};
 }
@@ -1587,7 +1652,7 @@ function sendTelegramDeviceRecovery_(customerId,meterId,receivedAt){
   if(!cfg.alarmEnabled||!cfg.alarmDeviceOfflineEnabled)return {ok:true,skipped:true};
   const customer=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId));
   const time=Utilities.formatDate(receivedAt||new Date(),CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss');
-  return telegramSend_('<b>✅ kWh-KU DEVICE RECOVERY</b>\n━━━━━━━━━━━━━━━━━━━━\n🟢 <b>STATUS: ESP32 ONLINE</b>\n\n👤 <b>Pelanggan:</b> '+alarmHtml_(customer&&customer.name||customerId)+'\n🆔 <b>ID:</b> '+alarmHtml_(customerId)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(meterId)+'\n\n📡 Data sensor kembali diterima oleh server.\n🕒 <b>Waktu pemulihan:</b> '+time+'\n━━━━━━━━━━━━━━━━━━━━','HTML');
+  return telegramSend_('<b>✅ kWh-KU DEVICE RECOVERY</b>\n━━━━━━━━━━━━━━━━━━━━\n🟢 <b>STATUS: ESP32 ONLINE</b>\n\n👤 <b>Pelanggan:</b> '+alarmHtml_(customer&&customer.name||customerId)+'\n🆔 <b>ID:</b> '+alarmHtml_(customerId)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(meterId)+'\n\n📡 Data sensor kembali diterima oleh server.\n🕒 <b>Waktu pemulihan:</b> '+time+'\n━━━━━━━━━━━━━━━━━━━━','HTML',customerId);
 }
 
 function sendTelegramSystemMonitorAll(){
@@ -1643,7 +1708,7 @@ function sendTelegramSystemMonitor_(customer){
     '🕒 '+Utilities.formatDate(now,CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss'),
     '<i>Estimasi biaya berdasarkan data energi yang tersimpan.</i>'
   ].join('\n');
-  return telegramSend_(msg,'HTML');
+  return telegramSend_(msg,'HTML',customer.customerId);
 }
 
 function evaluateMultiParameterTelegramAlert_(r){
@@ -1700,7 +1765,7 @@ function evaluateMultiParameterTelegramAlert_(r){
       message='⏰ <b>PENGINGAT KONDISI SISTEM</b>\n'+header+'\n\n<b>MASIH ABNORMAL ('+activeLines.length+')</b>\n'+activeLines.join('\n')+'\n\n🕒 <b>Waktu:</b> '+time+'\n🔁 <i>Interval pengingat: '+cfg.reminderIntervalMinutes+' menit</i>';
       state.lastReminderAt=now;
     }
-    if(message){const sent=telegramSend_(message,'HTML');if(!sent.ok)return {ok:false,message:'Pesan alarm gagal dikirim; status alarm tidak diperbarui.',telegram:sent};}
+    if(message){const sent=telegramSend_(message,'HTML',r.customerId);if(!sent.ok)return {ok:false,message:'Pesan alarm gagal dikirim; status alarm tidak diperbarui.',telegram:sent};}
     props.setProperty(stateKey,JSON.stringify(state));
     return {ok:true,sent:!!message,activeCount:activeKeys.length,recoveredCount:recovered.length};
   } finally {lock.releaseLock();}
