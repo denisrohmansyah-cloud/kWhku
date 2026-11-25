@@ -1263,8 +1263,8 @@ function evaluateTemperatureTelegramAlert_(reading) {
         '⏰ PENGINGAT SUHU MASIH TINGGI\n' +
         'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\n' +
         'Perangkat: ' + reading.deviceId + '\n' +
-        'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C (ambang ' + threshold.toFixed(1) + ' °C)\n' +
-        'Kelembapan: ' + reading.humidityPct.toFixed(1) + '%\n' +
+        'Suhu: ' + telegramDisplayNumber_(reading.temperatureC,2) + ' °C (ambang ' + telegramDisplayNumber_(threshold,2) + ' °C)\n' +
+        'Kelembapan: ' + telegramDisplayNumber_(reading.humidityPct,2) + ' %\n' +
         'Waktu: ' + time
       );
       if (result.ok) cache.put(reminderKey,'1',1800);
@@ -1274,8 +1274,8 @@ function evaluateTemperatureTelegramAlert_(reading) {
       '✅ SUHU KEMBALI NORMAL kWh-Ku\n' +
       'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\n' +
       'Perangkat: ' + reading.deviceId + '\n' +
-      'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C\n' +
-      'Ambang peringatan: ' + threshold.toFixed(1) + ' °C\n' +
+      'Suhu: ' + telegramDisplayNumber_(reading.temperatureC,2) + ' °C\n' +
+      'Ambang peringatan: ' + telegramDisplayNumber_(threshold,2) + ' °C\n' +
       'Waktu: ' + time
     );
     if (result.ok) {
