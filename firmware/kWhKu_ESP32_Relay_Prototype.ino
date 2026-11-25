@@ -444,7 +444,7 @@ bool fetchDashboardSnapshot() {
     isFiniteValue(dashboardPowerFactor) && isFiniteValue(dashboardFrequencyHz) &&
     isFiniteValue(dashboardEnergyMonthKwh) && isFiniteValue(dashboardCostMonthRp);
   if (dashboardDataValid) {
-    Serial.printf("[LCD-DASHBOARD] Sync OK Ebulan=%.3f kWh Biaya=%.0f Tarif=%.0f Online=%s\n",
+    Serial.printf("[LCD-DASHBOARD] Sync OK Ebulan=%.2f kWh Biaya=%.2f Tarif=%.2f Online=%s\n",
       dashboardEnergyMonthKwh, dashboardCostMonthRp, dashboardTariffRpPerKwh,
       dashboardOnline ? "YES" : "NO");
   }
@@ -484,7 +484,7 @@ void readSensors() {
   temperatureDataValid = isFiniteValue(t) && isFiniteValue(h) &&
     t >= 0 && t <= 50 && h >= 0 && h <= 100;
 
-  Serial.printf("[SENSOR] valid=%s V=%.2f A=%.3f W=%.2f kWh=%.3f Hz=%.2f PF=%.2f T=%.1f H=%.1f\n",
+  Serial.printf("[SENSOR] valid=%s V=%.2f A=%.2f W=%.2f kWh=%.2f Hz=%.2f PF=%.2f T=%.2f H=%.2f\n",
     electricalDataValid ? "YES" : "NO", voltageV, currentA, powerW,
     energyKwh, frequencyHz, powerFactor, temperatureC, humidityPct);
 }
@@ -897,10 +897,10 @@ void updateLcd() {
   switch (lcdPage) {
     case 0:
       printLcdLine(0, electricalDataValid
-        ? "V:" + String(voltageV, 1) + " A:" + String(currentA, 2)
+        ? "V:" + String(voltageV, 2) + " A:" + String(currentA, 2)
         : "PZEM: Sensor Error");
       printLcdLine(1, electricalDataValid
-        ? "P:" + String(powerW, 1) + " PF:" + String(powerFactor, 2)
+        ? "P:" + String(powerW, 2) + " PF:" + String(powerFactor, 2)
         : "Data lokal invalid");
       break;
 
@@ -915,8 +915,8 @@ void updateLcd() {
 
     case 2:
       if (temperatureDataValid) {
-        printLcdLine(0, "Suhu:" + String(temperatureC, 1) + " C");
-        printLcdLine(1, "Kelembapan:" + String(humidityPct, 0) + "%");
+        printLcdLine(0, "Suhu:" + String(temperatureC, 2) + " C");
+        printLcdLine(1, "RH:" + String(humidityPct, 2) + " %");
       } else {
         printLcdLine(0, "DHT11: Sensor Error");
         printLcdLine(1, "Suhu/Kelembapan --");

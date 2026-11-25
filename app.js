@@ -27,13 +27,14 @@ const truncateDisplay=(n,places)=>{
   return (v<0?'-':'')+grouped+(places?','+fraction:'');
 };
 const fmt=n=>raw(n);
-// Format tampilan pengukuran sesuai spesifikasi dengan pemotongan desimal (truncation), bukan pembulatan.\n// Nilai mentah tetap utuh untuk semua perhitungan dan ekspor.
+// Format tampilan pengukuran memakai truncation dua desimal, bukan pembulatan.
+// Nilai mentah tetap utuh untuk perhitungan dan ekspor.
 const fmtEnergy=n=>truncateDisplay(n,2);
-const fmtW=n=>truncateDisplay(n,1);
-const fmtV=n=>truncateDisplay(n,1);
-const fmtHz=n=>truncateDisplay(n,1);
+const fmtW=n=>truncateDisplay(n,2);
+const fmtV=n=>truncateDisplay(n,2);
+const fmtHz=n=>truncateDisplay(n,2);
 const fmtPF=n=>truncateDisplay(n,2);
-const fmtCurrentA=n=>truncateDisplay(n,3);
+const fmtCurrentA=n=>truncateDisplay(n,2);
 const rp=n=>'Rp '+truncateDisplay(num(n)??0,2);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dText=d=>new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
@@ -181,7 +182,7 @@ function renderAll(){if(!session)return;
   $('tokenDate').innerHTML=admin()?'—<small>Tagihan bulanan</small>':'Akhir bulan<small>Periode tagihan</small>';
   $('tokenBalance').textContent=c?rp(cost):rp(sum('costMonthRp'));
   const pct=target>0?Math.min(100,cost/target*100):0;
-  $('tokenPercent').textContent=target?truncateDisplay(pct,2)+'% dari target':'Target belum diatur';
+  $('tokenPercent').textContent=target?truncateDisplay(pct,2)+' % dari target':'Target belum diatur';
   $('tokenProgress').style.width=pct+'%';
   $('tokenUsed').textContent=target?'Target biaya: '+rp(target):'Target biaya belum diatur';
   const on=customers.filter(x=>x.online).length,heavy=L&&c.powerVa&&L.powerW>c.powerVa*.8;
@@ -207,8 +208,8 @@ function renderChart(){
   const path=points.map((p,i)=>(i?'L':'M')+' '+p.x.toFixed(2)+' '+p.y.toFixed(2)).join(' ');
   const grid=[30,67,104,141].map(y=>'<line class="line-chart-grid" x1="8" y1="'+y+'" x2="692" y2="'+y+'"></line>').join('');
   const markers=points.map((p,i)=>'<circle class="line-chart-point'+(i===points.length-1?' is-current':'')+'" cx="'+p.x.toFixed(2)+'" cy="'+p.y.toFixed(2)+'" r="'+(i===points.length-1?5.5:4)+'"><title>'+ds[i]+': '+fmtEnergy(p.value)+' kWh</title></circle>').join('');
-  // Each date gets its own exact energy label; use three decimals to retain small kWh readings.
-  const valueLabels=points.map((p,i)=>'<span class="line-chart-value-label" style="left:'+((p.x/700)*100).toFixed(2)+'%;top:'+((p.y/170)*100).toFixed(2)+'%">'+truncateDisplay(p.value,3)+' kWh</span>').join('');
+  // Each date label uses the same two-decimal kWh formatter as the dashboard.
+  const valueLabels=points.map((p,i)=>'<span class="line-chart-value-label" style="left:'+((p.x/700)*100).toFixed(2)+'%;top:'+((p.y/170)*100).toFixed(2)+'%">'+fmtEnergy(p.value)+' kWh</span>').join('');
   const labels=ds.map(k=>'<span>'+k.slice(8)+'/'+k.slice(5,7)+'</span>').join('');
   $('chart').classList.add('line-chart');
   $('chart').setAttribute('role','img');
@@ -352,7 +353,7 @@ function renderMonitoring(){
   const stamps=allVisible.map(r=>new Date(r.timestamp).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
   const intervals=stamps.slice(1).map((t,i)=>t-stamps[i]).filter(t=>t>0),gaps=intervals.filter(t=>t>90000).length;
   const avgInterval=intervals.length?intervals.reduce((sum,t)=>sum+t,0)/intervals.length/1000:0;
-  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?truncateDisplay(avgInterval,3)+' detik':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'')+(monitoringError?' <span class="monitoring-error">Peringatan API: '+esc(monitoringError)+'</span>':'');
+  $('dataQuality').innerHTML='<b>Kualitas data:</b> '+allVisible.length+' pembacaan pada data yang dimuat; '+gaps+' jeda antar-pembacaan lebih dari 90 detik; interval rata-rata '+(avgInterval?truncateDisplay(avgInterval,2)+' s':'belum tersedia')+'.'+(stamps.length?' Rentang: '+new Date(stamps[0]).toLocaleString('id-ID')+' – '+new Date(stamps[stamps.length-1]).toLocaleString('id-ID')+'.':'')+(monitoringError?' <span class="monitoring-error">Peringatan API: '+esc(monitoringError)+'</span>':'');
   const connections=(monitoring.connections||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,5);
   const incidents=(monitoring.incidents||[]).filter(r=>admin()||r.customerId===session?.customerId).slice(0,5);
   const devices=(monitoring.devices||[]).filter(r=>admin()||r.customerId===session?.customerId);
@@ -371,8 +372,8 @@ function renderMonitoring(){
   // Kartu ringkasan selalu memakai pembacaan terbaru, tidak ikut terhapus oleh filter riwayat tanggal.
   const latestTemp=allTemps[0];
   const visibleTemps=allTemps.filter(r=>(!monitorStart||localDay(r.timestamp)>=monitorStart)&&(!monitorEnd||localDay(r.timestamp)<=monitorEnd));
-  $('temperatureLatest').textContent=latestTemp?truncateDisplay(latestTemp.temperatureC,1)+' °C':'— °C';
-  $('humidityLatest').textContent=latestTemp?truncateDisplay(latestTemp.humidityPct,1)+' %':'— %';
+  $('temperatureLatest').textContent=latestTemp?truncateDisplay(latestTemp.temperatureC,2)+' °C':'— °C';
+  $('humidityLatest').textContent=latestTemp?truncateDisplay(latestTemp.humidityPct,2)+' %':'— %';
   const tempSeenAt=latestTemp?new Date(latestTemp.receivedAt||latestTemp.timestamp):null;
   const tempAgeMs=tempSeenAt?Date.now()-tempSeenAt.getTime():Infinity;
   const tempFresh=Number.isFinite(tempAgeMs)&&tempAgeMs>=-60000&&tempAgeMs<=180000;
@@ -380,7 +381,7 @@ function renderMonitoring(){
   $('temperatureStatus').textContent=latestTemp?(tempFresh?'TERBARU':'KEDALUWARSA'):'MENUNGGU';
   $('temperatureStatus').className='badge '+(latestTemp?(tempFresh?'':'amber'):'amber');
   $('humidityLastSeen').textContent=latestTemp?'Satu pembacaan dengan suhu · '+esc(latestTemp.meterId):'Menunggu sensor DHT11';
-  $('temperatureReadings').innerHTML=visibleTemps.slice(0,Math.min(100,Number($('monitorLimit')?.value)||5)).map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+truncateDisplay(r.temperatureC,1)+' °C</b></td><td>'+truncateDisplay(r.humidityPct,1)+' %</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada data suhu dan kelembapan pada rentang tanggal ini.</td></tr>';
+  $('temperatureReadings').innerHTML=visibleTemps.slice(0,Math.min(100,Number($('monitorLimit')?.value)||5)).map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+truncateDisplay(r.temperatureC,2)+' °C</b></td><td>'+truncateDisplay(r.humidityPct,2)+' %</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada data suhu dan kelembapan pada rentang tanggal ini.</td></tr>';
   $('monitorReadings').innerHTML=monitoringLoading?'<tr><td colspan="9" class="empty">Sedang memuat pembacaan sensor dari server…</td></tr>':readings.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+timeLabel(r.receivedAt||r.timestamp)+'</td><td>'+esc(r.customerId)+' · '+esc(r.meterId)+'</td><td><b>'+fmtEnergy(r.energyKwh)+' kWh</b></td><td>'+fmtW(r.powerW)+' W</td><td>'+fmtV(r.voltageV)+' V</td><td>'+fmtCurrentA(r.currentA)+' A</td><td>'+fmtHz(r.frequencyHz)+' Hz</td><td>'+fmtPF(r.powerFactor)+'</td></tr>').join('')||(monitoringError?'<tr><td colspan="9" class="empty">Data monitoring gagal dimuat. Periksa endpoint Google Apps Script dan deployment.</td></tr>':'<tr><td colspan="9" class="empty">Belum ada data pembacaan.</td></tr>');
   $('monitorConnections').innerHTML=connections.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td><span class="badge '+(r.status==='ONLINE'?'':'amber')+'">'+esc(r.status)+'</span></td><td>'+esc(r.details||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada perubahan koneksi. Jalankan setupMonitoring() pada Apps Script.</td></tr>';
   $('monitorIncidents').innerHTML=incidents.map(r=>'<tr><td>'+timeLabel(r.timestamp)+'</td><td>'+esc(r.customerId)+'</td><td>'+esc(r.meterId)+'</td><td>'+esc(r.eventType)+'</td><td><span class="badge '+(r.severity==='CRITICAL'||r.severity==='WARNING'?'red':'')+'">'+esc(r.severity)+'</span></td><td>'+esc(r.message)+'</td><td>'+timeLabel(r.resolvedAt)+'</td></tr>').join('')||'<tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr>';
@@ -412,7 +413,7 @@ $('addCustomer').onclick=()=>openModal('customer');
 function printRecap(){const cs=admin()?customers:customers.filter(c=>c.customerId===session.customerId);
   $('printArea').innerHTML=`<h1>Rekap kWh-Ku</h1><p>Dicetak: ${new Date().toLocaleString('id-ID')} · Oleh: ${esc(session.name)}${selId?' · Pelanggan '+esc(selId):''}</p>
   <h3>Ringkasan bulan ini</h3><table><tr><th>ID</th><th>Nama</th><th>Daya</th><th>Energi (kWh)</th><th>Biaya (Rp)</th><th>Tarif (Rp/kWh)</th></tr>${cs.map(c=>`<tr><td>${esc(c.customerId)}</td><td>${esc(c.name)}</td><td>${fmt(c.powerVa)} VA</td><td>${fmtEnergy(c.energyMonthKwh)}</td><td>${rp(c.costMonthRp)}</td><td>${rp(c.tariffRpPerKwh)}</td></tr>`).join('')}</table>
-  <h3>Riwayat harian</h3><table><tr><th>Tanggal</th><th>Pelanggan</th><th>kWh</th><th>Biaya (Rp)</th></tr>${historyRows().slice(0,500).map(r=>`<tr><td>${dLabel(r.date)}</td><td>${esc(r.customerId)} ${esc(cust(r.customerId).name)}</td><td>${fmt(r.kwh)}</td><td>${rp(r.costRp)}</td></tr>`).join('')}</table>`;
+  <h3>Riwayat harian</h3><table><tr><th>Tanggal</th><th>Pelanggan</th><th>kWh</th><th>Biaya (Rp)</th></tr>${historyRows().slice(0,500).map(r=>`<tr><td>${dLabel(r.date)}</td><td>${esc(r.customerId)} ${esc(cust(r.customerId).name)}</td><td>${fmtEnergy(r.kwh)}</td><td>${rp(r.costRp)}</td></tr>`).join('')}</table>`;
   window.print()}
 $('printHistory').onclick=printRecap;$('printCustomers').onclick=printRecap;
 $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh','Biaya Rp'],...historyRows().map(r=>[r.date,r.customerId,cust(r.customerId).name,r.kwh,r.costRp])];
