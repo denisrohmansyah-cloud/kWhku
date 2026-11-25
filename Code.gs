@@ -596,7 +596,7 @@ function doPost(e) {
       const expected=PropertiesService.getScriptProperties().getProperty('KWHKU_TELEGRAM_WEBHOOK_SECRET');
       const supplied=e&&e.parameter?String(e.parameter.kwhku_secret||''):'';
       if(!expected||!safeEqual_(expected,supplied))return json_({ok:false,message:'Unauthorized webhook'});
-      const props=PropertiesService.getScriptProperties(),lock=LockService.getScriptLock();lock.waitLock(10000);
+      const props=PropertiesService.getScriptProperties(),lock=LockService.getUserLock();lock.waitLock(10000);
       try{const last=Number(props.getProperty('KWHKU_TELEGRAM_LAST_UPDATE')||0);if(Number(body.update_id)<=last)return json_({ok:true,duplicate:true});handleTelegramUpdate_(body);props.setProperty('KWHKU_TELEGRAM_LAST_UPDATE',String(body.update_id));return json_({ok:true});}
       finally{lock.releaseLock();}
     }
@@ -1429,10 +1429,18 @@ function queueTelegramRelayCommand_(customerId,mode,state,chatId){
   const latest=latestRelayCommand_(customerId,c.meterId);
   if(latest&&String(latest.status).toUpperCase()==='PENDING'){
    const created=new Date(latest.createdAt).getTime(),pendingAge=Date.now()-created;
-   if(!Number.isFinite(created)||pendingAge<0||pendingAge<=120000)return{ok:false,status:'PENDING',commandId:String(latest.commandId||''),message:'Masih ada perintah yang menunggu konfirmasi ESP32. Tunggu sampai selesai.'};
+   const commandSheet=SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]);
    const all=relayRows_('commands'),index=all.findIndex(x=>String(x.commandId)===String(latest.commandId));
-   if(index>=0)SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]).getRange(index+2,9).setValue('EXPIRED');
-   relayLog_(customerId,c.meterId,'COMMAND_EXPIRED',String(latest.desiredState||''),'Perintah Telegram kedaluwarsa setelah 120 detik','SERVER',String(latest.commandId));
+   if(!Number.isFinite(created)||pendingAge<0||pendingAge<=120000){
+    if(requested!=='OFF'||String(latest.desiredState).toUpperCase()==='OFF')
+     return{ok:false,status:'PENDING',commandId:String(latest.commandId||''),message:'Masih ada perintah yang menunggu konfirmasi ESP32. Tunggu sampai selesai.'};
+    // OFF has priority: supersede an unconfirmed ON/RESET request.
+    if(index>=0)commandSheet.getRange(index+2,9).setValue('SUPERSEDED');
+    relayLog_(customerId,c.meterId,'COMMAND_SUPERSEDED','OFF','Perintah OFF Telegram memprioritaskan perintah sebelumnya yang belum dikonfirmasi','TELEGRAM',String(latest.commandId));
+   }else{
+    if(index>=0)commandSheet.getRange(index+2,9).setValue('EXPIRED');
+    relayLog_(customerId,c.meterId,'COMMAND_EXPIRED',String(latest.desiredState||''),'Perintah Telegram kedaluwarsa setelah 120 detik','SERVER',String(latest.commandId));
+   }
   }
   const id='RLY-TG-'+Utilities.getUuid(),now=new Date();
   SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(RELAY_SHEETS_.commands[0]).appendRow([id,customerId,c.meterId,isReset?'AUTO_RESET':'MANUAL',isReset?'ON':requested,isReset?'Reset manual trip AUTO':'Perintah Telegram '+requested,now,'TELEGRAM:'+chatId,'PENDING','','','']);
