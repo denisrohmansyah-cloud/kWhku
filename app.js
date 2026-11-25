@@ -182,7 +182,7 @@ function renderAll(){if(!session)return;
   $('tokenDate').innerHTML=admin()?'—<small>Tagihan bulanan</small>':'Akhir bulan<small>Periode tagihan</small>';
   $('tokenBalance').textContent=c?rp(cost):rp(sum('costMonthRp'));
   const pct=target>0?Math.min(100,cost/target*100):0;
-  $('tokenPercent').textContent=target?truncateDisplay(pct,2)+'% dari target':'Target belum diatur';
+  $('tokenPercent').textContent=target?truncateDisplay(pct,2)+' % dari target':'Target belum diatur';
   $('tokenProgress').style.width=pct+'%';
   $('tokenUsed').textContent=target?'Target biaya: '+rp(target):'Target biaya belum diatur';
   const on=customers.filter(x=>x.online).length,heavy=L&&c.powerVa&&L.powerW>c.powerVa*.8;
