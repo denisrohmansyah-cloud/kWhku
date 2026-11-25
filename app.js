@@ -677,42 +677,91 @@ $('alarmConfigForm')?.addEventListener('submit',async e=>{
 });
 
 /* Dedicated relay control page; uses existing authenticated Apps Script endpoints. */
-let relayPageTarget='',relayPageRow=null;
+let relayPageTarget='',relayPageRow=null,relayPageFetchInFlight=false,relayPageCommandInFlight=false;
 function relayPageTime(value){if(!value)return '—';const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'medium'});}
-function relayPageTargetId(){return admin()?(relayPageTarget||customers[0]?.customerId||''):session?.customerId||'';}
-async function loadRelayControlPage(){
- if(!session)return;
- const target=relayPageTargetId();
- const [status,history]=await Promise.all([
-  api('getRelayStatus',session,target),
-  api('getRelayHistory',session,target,50)
- ]);
- if(!status?.ok)throw Error(status?.message||'Status relay gagal dimuat');
- relayPageRow=(status.rows||[])[0]||null;
- renderRelayControlPage();
- renderRelayControlHistory(history);
+function relayPageTargetId(){return admin()?(relayPageTarget||$('relayPageCustomer')?.value||customers[0]?.customerId||''):session?.customerId||'';}
+async function loadRelayControlPage(options={}){
+ if(!session||relayPageFetchInFlight)return;
+ relayPageFetchInFlight=true;
+ try{
+  const requestedTarget=relayPageTargetId();
+  // Admins load the available relay rows once so they can select a specific customer device.
+  const status=await api('getRelayStatus',session,admin()?undefined:requestedTarget);
+  if(!status?.ok)throw Error(status?.message||'Status relay gagal dimuat');
+  const rows=Array.isArray(status.rows)?status.rows:[];
+  if(admin()){
+   const select=$('relayPageCustomer');
+   if(select){
+    const preferred=relayPageTarget||select.value||requestedTarget;
+    select.innerHTML=rows.map(x=>'<option value="'+esc(x.customerId)+'">'+esc(x.customerId+' — '+(x.meterId||x.customerId))+'</option>').join('');
+    relayPageTarget=rows.some(x=>String(x.customerId)===String(preferred))?String(preferred):String(rows[0]?.customerId||'');
+    select.value=relayPageTarget;
+   }
+   relayPageRow=rows.find(x=>String(x.customerId)===String(relayPageTarget))||null;
+  }else{
+   relayPageTarget=session.customerId||'';
+   relayPageRow=rows.find(x=>String(x.customerId)===String(session.customerId))||rows[0]||null;
+  }
+  renderRelayControlPage();
+  if(options.history!==false){
+   if(!relayPageTargetId()){
+    renderRelayControlHistory({ok:true,rows:[]});
+   }else{
+    try{
+     const history=await api('getRelayHistory',session,relayPageTargetId(),50);
+     renderRelayControlHistory(history);
+    }catch(error){
+     renderRelayControlHistory({ok:false,message:error?.message||String(error)});
+    }
+   }
+  }
+ }finally{
+  relayPageFetchInFlight=false;
+ }
 }
 function renderRelayControlPage(){
- const r=relayPageRow;if(!r)return;
- const fresh=r.outputState!=='STALE'&&r.outputState!=='UNKNOWN';
+ const r=relayPageRow;
+ if(!r){
+  $('relayPageOutput').textContent='UNKNOWN';
+  $('relayPageDevice').textContent='UNKNOWN';
+  $('relayPageOutputNote').textContent='Belum ada data relay untuk pelanggan ini.';
+  $('relayPageOn').disabled=true;$('relayPageOff').disabled=true;
+  $('relayPageManualHint').textContent='Perangkat belum memiliki status relay.';
+  $('relayPageStatus').textContent='Perangkat belum tersedia atau belum dikonfigurasi.';
+  return;
+ }
+ const age=r.statusAgeSeconds==null?null:Number(r.statusAgeSeconds);
+ const fresh=r.outputState!=='STALE'&&r.outputState!=='UNKNOWN'&&age!==null&&Number.isFinite(age)&&age<=15;
+ const pending=String(r.commandStatus||'').toUpperCase()==='PENDING';
+ const manualAllowed=!!r.enabled&&r.mode==='MANUAL'&&fresh&&!pending&&!relayPageCommandInFlight;
  $('relayPageOutput').textContent=r.outputState||'UNKNOWN';
  $('relayPageOutput').dataset.state=r.outputState||'UNKNOWN';
- $('relayPageOutputNote').textContent=(r.reason||'Status output ESP32')+(r.statusAgeSeconds!=null?' · '+r.statusAgeSeconds+' dtk lalu':'');
+ $('relayPageOutputNote').textContent=(r.reason||'Status output ESP32')+(age!==null?' · '+age+' dtk lalu':'');
  $('relayPageMode').textContent=r.mode==='AUTO'?'OTOMATIS':'MANUAL';
  $('relayPageModeBadge').textContent=r.mode==='AUTO'?'MODE OTOMATIS':'MODE MANUAL';
  $('relayPageDevice').textContent=fresh?'ONLINE':(r.outputState==='STALE'?'STALE':'OFFLINE');
  $('relayPageLastSeen').textContent=r.reportedAt?'Update '+relayPageTime(r.reportedAt):'Belum ada heartbeat';
- document.querySelectorAll('[data-control-mode]').forEach(b=>b.classList.toggle('is-active',b.dataset.controlMode===r.mode));
- $('relayPageOn').disabled=!r.enabled||r.mode!=='MANUAL'||!fresh;
- $('relayPageOff').disabled=!r.enabled||r.mode!=='MANUAL'||!fresh;
- $('relayPageManualHint').textContent=r.mode==='AUTO'?'Mode AUTO aktif. Pilih MANUAL untuk menggunakan tombol ON/OFF.':(!r.enabled?'Kendali relay dinonaktifkan.':'Tombol aktif jika ESP32 online dan status sensor valid.');
+ document.querySelectorAll('[data-control-mode]').forEach(b=>{
+  b.classList.toggle('is-active',b.dataset.controlMode===r.mode);
+  b.disabled=relayPageCommandInFlight||pending;
+ });
+ $('relayPageOn').disabled=!manualAllowed;
+ $('relayPageOff').disabled=!manualAllowed;
+ $('relayPageManualHint').textContent=r.mode==='AUTO'
+  ?'Mode AUTO aktif. Pilih MANUAL untuk menggunakan tombol ON/OFF.'
+  :!r.enabled?'Kendali relay dinonaktifkan.'
+  :!fresh?'Status ESP32 belum cukup baru (maksimal 15 detik). Kontrol manual dikunci.'
+  :pending?'Perintah sebelumnya masih menunggu konfirmasi ESP32.'
+  :'Status ESP32 terbaru. Perintah manual tersedia.';
  $('relayPageEnabled').checked=!!r.enabled;
+ $('relayPageEnabled').disabled=relayPageCommandInFlight||pending;
  $('relayPageDecision').textContent=r.decisionState||'UNKNOWN';
  $('relayPageDecisionValue').textContent=r.decisionState||'UNKNOWN';
  $('relayPageReason').textContent=r.decisionReason||'Belum ada alasan dari ESP32.';
  $('relayPageReasonShort').textContent=r.reason||r.decisionReason||'—';
  $('relayPageDesired').textContent=r.desiredState||'—';
  $('relayPageUpdated').textContent=relayPageTime(r.updatedAt||r.reportedAt);
+ $('relayPageSave').disabled=relayPageCommandInFlight||pending;
 }
 function renderRelayControlHistory(result){
  const rows=Array.isArray(result?.rows)?result.rows:[];
@@ -721,6 +770,7 @@ function renderRelayControlHistory(result){
 }
 async function saveRelayPageConfig(extra={}){
  if(!relayPageRow)throw Error('Status relay belum dimuat.');
+ if(relayPageCommandInFlight)throw Error('Tunggu hingga perintah relay selesai diproses.');
  const payload={...(relayPageRow.relayConfig||{}),enabled:$('relayPageEnabled').checked,mode:extra.mode||relayPageRow.mode||'MANUAL',autoRecover:relayPageRow.relayConfig?.autoRecover!==false,recoverStableSeconds:Number(relayPageRow.relayConfig?.recoverStableSeconds)||60};
  const result=await api('saveRelayConfig',session,payload,relayPageTargetId());
  if(!result?.ok)throw Error(result?.message||'Konfigurasi relay gagal disimpan.');
@@ -729,21 +779,68 @@ async function saveRelayPageConfig(extra={}){
 }
 async function sendRelayPageCommand(mode,state){
  if(!relayPageRow)throw Error('Status relay belum dimuat.');
+ if(relayPageCommandInFlight)throw Error('Perintah relay sebelumnya masih diproses.');
  if(relayPageRow.mode!=='MANUAL')throw Error('Perintah ON/OFF hanya tersedia pada mode MANUAL.');
  if(!relayPageRow.enabled)throw Error('Aktifkan kendali relay terlebih dahulu.');
- if(relayPageRow.outputState==='STALE'||relayPageRow.outputState==='UNKNOWN')throw Error('ESP32 belum mengirim status terbaru.');
+ const age=relayPageRow.statusAgeSeconds==null?null:Number(relayPageRow.statusAgeSeconds);
+ if(relayPageRow.outputState==='STALE'||relayPageRow.outputState==='UNKNOWN'||age===null||!Number.isFinite(age)||age>15)throw Error('Status ESP32 belum terbaru. Perintah manual dikunci.');
+ if(String(relayPageRow.commandStatus||'').toUpperCase()==='PENDING')throw Error('Tunggu konfirmasi perintah sebelumnya dari ESP32.');
  if(!confirm('Kirim perintah relay '+state+'?'))return;
- const result=await api('setRelayCommand',session,mode,state,relayPageTargetId());
- if(!result?.ok)throw Error(result?.message||'Perintah relay gagal dikirim.');
- toast('Perintah '+state+' dikirim. Menunggu konfirmasi ESP32.');
- await loadRelayControlPage();
+ relayPageCommandInFlight=true;
+ renderRelayControlPage();
+ $('relayPageStatus').textContent='Mengirim perintah '+state+'…';
+ try{
+  const result=await api('setRelayCommand',session,mode,state,relayPageTargetId());
+  if(!result?.ok)throw Error(result?.message||'Perintah relay gagal dikirim.');
+  toast('Perintah '+state+' terkirim. Menunggu konfirmasi ESP32.');
+  let acknowledged=false,failed=false;
+  for(let attempt=0;attempt<6;attempt++){
+   await new Promise(resolve=>setTimeout(resolve,700));
+   await loadRelayControlPage({history:false});
+   const commandStatus=String(relayPageRow?.commandStatus||'').toUpperCase();
+   const outputState=String(relayPageRow?.outputState||'').toUpperCase();
+   if(commandStatus==='ACKNOWLEDGED'&&outputState===state){acknowledged=true;break;}
+   if(commandStatus==='FAILED'){failed=true;break;}
+  }
+  if(acknowledged){
+   $('relayPageStatus').textContent='ESP32 mengonfirmasi relay '+state+'.';
+   toast('Konfirmasi ESP32 diterima: relay '+state+'.');
+  }else if(failed){
+   $('relayPageStatus').textContent='ESP32 menolak atau gagal menjalankan perintah.';
+   toast('Perintah relay gagal dikonfirmasi oleh ESP32.');
+  }else{
+   $('relayPageStatus').textContent='Perintah terkirim, tetapi konfirmasi ESP32 belum diterima.';
+   toast('Belum ada konfirmasi ESP32. Periksa status perangkat.');
+  }
+  await loadRelayControlPage();
+ }finally{
+  relayPageCommandInFlight=false;
+  renderRelayControlPage();
+ }
 }
+$('relayPageCustomer')?.addEventListener('change',()=>{
+ relayPageTarget=$('relayPageCustomer').value||'';
+ loadRelayControlPage().catch(e=>toast(e.message||String(e)));
+});
 document.querySelectorAll('[data-control-mode]').forEach(b=>b.addEventListener('click',async()=>{
  try{await saveRelayPageConfig({mode:b.dataset.controlMode});toast('Mode relay diperbarui.')}
  catch(e){toast(e.message||String(e))}
 }));
-$('relayPageSave').addEventListener('click',async()=>{const b=$('relayPageSave');b.disabled=true;try{await saveRelayPageConfig();toast('Konfigurasi relay tersimpan.')}catch(e){toast(e.message||String(e))}finally{b.disabled=false}});
+$('relayPageSave').addEventListener('click',async()=>{
+ const b=$('relayPageSave');b.disabled=true;
+ try{await saveRelayPageConfig();toast('Konfigurasi relay tersimpan.')}
+ catch(e){toast(e.message||String(e))}
+ finally{b.disabled=false;renderRelayControlPage()}
+});
 $('relayPageOn').addEventListener('click',()=>sendRelayPageCommand('MANUAL','ON').catch(e=>toast(e.message||String(e))));
 $('relayPageOff').addEventListener('click',()=>sendRelayPageCommand('MANUAL','OFF').catch(e=>toast(e.message||String(e))));
 $('relayPageRefresh').addEventListener('click',()=>loadRelayControlPage().catch(e=>toast(e.message||String(e))));
 $('relayPageHistoryRefresh').addEventListener('click',()=>loadRelayControlPage().catch(e=>toast(e.message||String(e))));
+// Refresh relay telemetry every 5 seconds only while its page is visible.
+setInterval(()=>{
+ if(session&&!relayPageCommandInFlight&&$('page-controlRelay')?.classList.contains('active')){
+  loadRelayControlPage({history:false}).catch(error=>{
+   $('relayPageStatus').textContent='Gagal memperbarui status: '+(error?.message||String(error));
+  });
+ }
+},5000);
