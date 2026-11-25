@@ -456,7 +456,7 @@ function lastReadingRow_(sheet) {
 const RAW_READING_HEADERS_ = [
   'rawVoltageV','rawCurrentA','rawPowerW','rawEnergyKwh','rawFrequencyHz','rawPowerFactor'
 ];
-const READING_DISPLAY_DECIMALS_ = [1,3,1,2,1,2];
+const READING_DISPLAY_DECIMALS_ = [2,2,2,2,2,2];
 
 function ensureRawReadingColumns_(sheet) {
   // Selalu tampilkan kolom mentah L:Q; menghapus hideColumns saja tidak
@@ -510,6 +510,8 @@ function ensureTemperatureSheet_(spreadsheet) {
   if (!compatible) {
     throw new Error('Header Data_Suhu tidak sesuai. Data tidak ditulis agar struktur sheet lama tidak tertimpa.');
   }
+  // Format angka hanya mengubah tampilan sel; nilai sensor asli tetap utuh.
+  sheet.getRange('D:E').setNumberFormat('0.00');
   return sheet;
 }
 
@@ -1175,6 +1177,15 @@ function json_(obj){return ContentService.createTextOutput(JSON.stringify(obj)).
  * TELEGRAM_CHAT_IDS berisi satu atau beberapa chat ID dipisahkan koma.
  * Notifikasi dikirim saat suhu melewati ambang maxTemperatureC dan saat pulih.
  */
+function telegramDisplayNumber_(value,places) {
+  const n=Number(value);
+  if(!Number.isFinite(n))return '—';
+  const scale=Math.pow(10,places),cut=Math.trunc(Math.abs(n)*scale)/scale;
+  const parts=cut.toFixed(places).split('.');
+  const whole=parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  return (n<0?'-':'')+whole+(places?','+(parts[1]||''):'');
+}
+
 function telegramProperties_() {
   const p = PropertiesService.getScriptProperties();
   return {
@@ -1220,9 +1231,9 @@ function evaluateTemperatureTelegramAlert_(reading) {
       '⚠️ PERINGATAN SUHU kWh-Ku\n' +
       'Pelanggan: ' + customerName + ' (' + reading.customerId + ')\n' +
       'Perangkat: ' + reading.deviceId + '\n' +
-      'Suhu: ' + reading.temperatureC.toFixed(1) + ' °C\n' +
-      'Ambang: ' + threshold.toFixed(1) + ' °C\n' +
-      'Kelembapan: ' + reading.humidityPct.toFixed(1) + '%\n' +
+      'Suhu: ' + telegramDisplayNumber_(reading.temperatureC,2) + ' °C\n' +
+      'Ambang: ' + telegramDisplayNumber_(threshold,2) + ' °C\n' +
+      'Kelembapan: ' + telegramDisplayNumber_(reading.humidityPct,2) + '%\n' +
       'Waktu: ' + time
     );
     if (result.ok) cache.put(key,'1',21600);
@@ -1429,7 +1440,7 @@ function handleTelegramUpdate_(update){
  if(command==='/mode'){telegramReply_(chatId,'Mode relay: '+(status.relay.mode||'UNKNOWN')+'\nKendali: '+(status.relay.enabled?'AKTIF':'NONAKTIF'));return}
  if(command==='/status'||command==='/relay'){
   const r=status.reading,rr=status.relay,age=r?Math.max(0,Math.floor((Date.now()-new Date(r.receivedAt||r.timestamp).getTime())/60000)):null;
-  telegramReply_(chatId,'⚡ kWh-Ku | '+status.customer.name+'\nPerangkat: '+status.customer.meterId+'\nTegangan: '+(r?r.voltageV+' V':'—')+'\nArus: '+(r?r.currentA+' A':'—')+'\nDaya: '+(r?r.powerW+' W':'—')+'\nEnergi: '+(r?r.energyKwh+' kWh':'—')+'\nSuhu: '+(r&&r.temperatureC!==undefined?r.temperatureC+' °C':'lihat dashboard')+'\nData terakhir: '+(age===null?'belum ada':age+' menit lalu')+'\n\nRelay: '+(rr.outputState||'UNKNOWN')+'\nMode: '+(rr.mode||'UNKNOWN')+'\nKeputusan: '+(rr.decisionState||'UNKNOWN')+'\nAlasan: '+(rr.decisionReason||'—')+'\nStatus perintah: '+(rr.commandStatus||'NO_COMMAND'));return;
+  telegramReply_(chatId,'⚡ kWh-Ku | '+status.customer.name+'\nPerangkat: '+status.customer.meterId+'\nTegangan: '+(r?telegramDisplayNumber_(r.voltageV,2)+' V':'—')+'\nArus: '+(r?telegramDisplayNumber_(r.currentA,2)+' A':'—')+'\nDaya: '+(r?telegramDisplayNumber_(r.powerW,2)+' W':'—')+'\nEnergi: '+(r?telegramDisplayNumber_(r.energyKwh,2)+' kWh':'—')+'\nSuhu: '+(r&&r.temperatureC!==undefined?telegramDisplayNumber_(r.temperatureC,2)+' °C':'lihat dashboard')+'\nData terakhir: '+(age===null?'belum ada':age+' menit lalu')+'\n\nRelay: '+(rr.outputState||'UNKNOWN')+'\nMode: '+(rr.mode||'UNKNOWN')+'\nKeputusan: '+(rr.decisionState||'UNKNOWN')+'\nAlasan: '+(rr.decisionReason||'—')+'\nStatus perintah: '+(rr.commandStatus||'NO_COMMAND'));return;
  }
  if(command==='/on'||command==='/off'){
   const result=queueTelegramRelayCommand_(link.customerId,'MANUAL',command==='/on'?'ON':'OFF',chatId);
@@ -1577,7 +1588,7 @@ function sendTelegramSystemMonitor_(customer){
   const checks=[['Tegangan',Number(r.voltageV),v=>v>=cfg.minVoltageV&&v<=cfg.maxVoltageV],['Arus',Number(r.currentA),v=>v<=cfg.maxCurrentA],['Daya',Number(r.powerW),v=>v<=cfg.maxPowerW],['Frekuensi',Number(r.frequencyHz),v=>v>=cfg.minFrequencyHz&&v<=cfg.maxFrequencyHz],['Power factor',Number(r.powerFactor),v=>v>=cfg.minPowerFactor]];
   if(t){checks.push(['Suhu',Number(t.temperatureC),v=>v<cfg.maxTemperatureC]);checks.push(['Kelembapan',Number(t.humidityPct),v=>v>=cfg.minHumidityPct&&v<=cfg.maxHumidityPct]);}
   const bad=checks.filter(x=>Number.isFinite(x[1])&&!x[2](x[1]));
-  const n=v=>Number(v).toFixed(2),tariff=Number(customer.tariffRpPerKwh||CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
+  const n=v=>telegramDisplayNumber_(v,2),tariff=Number(customer.tariffRpPerKwh||CONFIG.DEFAULT_TARIFF_RP_PER_KWH);
   const usage=dailyUsage_(rows,tariff,id),today=Utilities.formatDate(now,CONFIG.TIME_ZONE,'yyyy-MM-dd'),month=Utilities.formatDate(now,CONFIG.TIME_ZONE,'yyyy-MM');
   const d=usage.find(x=>x.date===today),m=usage.filter(x=>x.date.slice(0,7)===month).reduce((s,x)=>s+x.costRp,0);
   const msg=[
@@ -1598,13 +1609,13 @@ function sendTelegramSystemMonitor_(customer){
     '',
     '🌡️ <b>ENVIRONMENT MONITORING</b>',
     t?'┣ 🌡️ Suhu: '+n(t.temperatureC)+' °C':'┣ ℹ️ Suhu: belum tersedia',
-    t?'┗ 💧 Kelembapan: '+n(t.humidityPct)+'%':'┗ ℹ️ Kelembapan: belum tersedia',
+    t?'┗ 💧 Kelembapan: '+n(t.humidityPct)+' %':'┗ ℹ️ Kelembapan: belum tersedia',
     '',
     '💰 <b>ELECTRICITY COST</b>',
     '┣ 📅 Konsumsi hari ini: '+n(d?d.kwh:0)+' kWh',
-    '┣ 💵 Biaya hari ini: Rp'+Math.round(d?d.costRp:0).toLocaleString('id-ID'),
-    '┣ 📆 Biaya bulan ini: Rp'+Math.round(m).toLocaleString('id-ID'),
-    '┗ 🏷️ Tarif: Rp'+tariff.toLocaleString('id-ID')+'/kWh',
+    '┣ 💵 Biaya hari ini: Rp '+n(d?d.costRp:0),
+    '┣ 📆 Biaya bulan ini: Rp '+n(m),
+    '┗ 🏷️ Tarif: Rp '+n(tariff)+'/kWh',
     '',
     '📡 <b>DEVICE STATUS</b>',
     '┣ '+(online?'🟢':'🔴')+' ESP32: '+(online?'ONLINE':'OFFLINE'),
@@ -1635,16 +1646,16 @@ function evaluateMultiParameterTelegramAlert_(r){
     const name=customer?String(customer.name||customer.customerId):String(r.customerId);
     const time=Utilities.formatDate(r.receivedAt||new Date(),CONFIG.TIME_ZONE,'dd/MM/yyyy HH:mm:ss');
     const checks=[
-      ['voltage_low','Tegangan rendah',r.voltageV,'V','≥ '+cfg.minVoltageV+' V',v=>v<cfg.minVoltageV,v=>v>=cfg.minVoltageV+2,cfg.alarmVoltageMinEnabled],
-      ['voltage_high','Tegangan tinggi',r.voltageV,'V','≤ '+cfg.maxVoltageV+' V',v=>v>cfg.maxVoltageV,v=>v<=cfg.maxVoltageV-2,cfg.alarmVoltageMaxEnabled],
-      ['current_high','Arus tinggi',r.currentA,'A','≤ '+cfg.maxCurrentA+' A',v=>v>cfg.maxCurrentA,v=>v<=cfg.maxCurrentA*.95,cfg.alarmCurrentMaxEnabled],
-      ['power_high','Daya tinggi',r.powerW,'W','≤ '+cfg.maxPowerW+' W',v=>v>cfg.maxPowerW,v=>v<=cfg.maxPowerW*.95,cfg.alarmPowerMaxEnabled],
-      ['frequency_low','Frekuensi rendah',r.frequencyHz,'Hz','≥ '+cfg.minFrequencyHz+' Hz',v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1,cfg.alarmFrequencyMinEnabled],
-      ['frequency_high','Frekuensi tinggi',r.frequencyHz,'Hz','≤ '+cfg.maxFrequencyHz+' Hz',v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1,cfg.alarmFrequencyMaxEnabled],
-      ['pf_low','Power factor rendah',r.powerFactor,'','≥ '+cfg.minPowerFactor,v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03,cfg.alarmPowerFactorMinEnabled],
-      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+cfg.maxTemperatureC+' °C',v=>v>cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1,cfg.alarmTemperatureMaxEnabled],
-      ['humidity_low','Kelembapan rendah',r.humidityPct,'%','≥ '+cfg.minHumidityPct+'%',v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2,cfg.alarmHumidityMinEnabled],
-      ['humidity_high','Kelembapan tinggi',r.humidityPct,'%','≤ '+cfg.maxHumidityPct+'%',v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2,cfg.alarmHumidityMaxEnabled]
+      ['voltage_low','Tegangan rendah',r.voltageV,'V','≥ '+telegramDisplayNumber_(cfg.minVoltageV,2)+' V',v=>v<cfg.minVoltageV,v=>v>=cfg.minVoltageV+2,cfg.alarmVoltageMinEnabled],
+      ['voltage_high','Tegangan tinggi',r.voltageV,'V','≤ '+telegramDisplayNumber_(cfg.maxVoltageV,2)+' V',v=>v>cfg.maxVoltageV,v=>v<=cfg.maxVoltageV-2,cfg.alarmVoltageMaxEnabled],
+      ['current_high','Arus tinggi',r.currentA,'A','≤ '+telegramDisplayNumber_(cfg.maxCurrentA,2)+' A',v=>v>cfg.maxCurrentA,v=>v<=cfg.maxCurrentA*.95,cfg.alarmCurrentMaxEnabled],
+      ['power_high','Daya tinggi',r.powerW,'W','≤ '+telegramDisplayNumber_(cfg.maxPowerW,2)+' W',v=>v>cfg.maxPowerW,v=>v<=cfg.maxPowerW*.95,cfg.alarmPowerMaxEnabled],
+      ['frequency_low','Frekuensi rendah',r.frequencyHz,'Hz','≥ '+telegramDisplayNumber_(cfg.minFrequencyHz,2)+' Hz',v=>v<cfg.minFrequencyHz,v=>v>=cfg.minFrequencyHz+.1,cfg.alarmFrequencyMinEnabled],
+      ['frequency_high','Frekuensi tinggi',r.frequencyHz,'Hz','≤ '+telegramDisplayNumber_(cfg.maxFrequencyHz,2)+' Hz',v=>v>cfg.maxFrequencyHz,v=>v<=cfg.maxFrequencyHz-.1,cfg.alarmFrequencyMaxEnabled],
+      ['pf_low','Power factor rendah',r.powerFactor,'','≥ '+telegramDisplayNumber_(cfg.minPowerFactor,2),v=>v<cfg.minPowerFactor,v=>v>=cfg.minPowerFactor+.03,cfg.alarmPowerFactorMinEnabled],
+      ['temperature_high','Suhu tinggi',r.temperatureC,'°C','≤ '+telegramDisplayNumber_(cfg.maxTemperatureC,2)+' °C',v=>v>cfg.maxTemperatureC,v=>v<=cfg.maxTemperatureC-1,cfg.alarmTemperatureMaxEnabled],
+      ['humidity_low','Kelembapan rendah',r.humidityPct,'%','≥ '+telegramDisplayNumber_(cfg.minHumidityPct,2)+' %',v=>v<cfg.minHumidityPct,v=>v>=cfg.minHumidityPct+2,cfg.alarmHumidityMinEnabled],
+      ['humidity_high','Kelembapan tinggi',r.humidityPct,'%','≤ '+telegramDisplayNumber_(cfg.maxHumidityPct,2)+' %',v=>v>cfg.maxHumidityPct,v=>v<=cfg.maxHumidityPct-2,cfg.alarmHumidityMaxEnabled]
     ];
     const newlyAbnormal=[],recovered=[];
     checks.forEach(ch=>{
@@ -1657,14 +1668,14 @@ function evaluateMultiParameterTelegramAlert_(r){
       else if(was)state.active[ch[0]].value=value;
     });
     const activeKeys=Object.keys(state.active);
-    const activeLines=activeKeys.map(k=>{const a=state.active[k];return '• <b>'+alarmHtml_(a.label)+'</b>: '+Number(a.value).toFixed(2)+' '+alarmHtml_(a.unit)+' <i>(batas '+alarmHtml_(a.limit)+')</i>';});
+    const activeLines=activeKeys.map(k=>{const a=state.active[k];return '• <b>'+alarmHtml_(a.label)+'</b>: '+telegramDisplayNumber_(a.value,2)+' '+alarmHtml_(a.unit)+' <i>(batas '+alarmHtml_(a.limit)+')</i>';});
     const header='<b>kWh-Ku | MONITORING ALARM</b>\n━━━━━━━━━━━━━━━━━━\n👤 <b>Pelanggan:</b> '+alarmHtml_(name)+'\n🆔 <b>ID:</b> '+alarmHtml_(r.customerId)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(r.deviceId||'-');
     let message='',now=Date.now(),reminderMs=Math.max(5,Number(cfg.reminderIntervalMinutes)||30)*60000;
     if(newlyAbnormal.length){
       message='🚨 <b>PERINGATAN SISTEM</b>\n'+header+'\n\n<b>⚠️ PARAMETER ABNORMAL ('+activeLines.length+')</b>\n'+activeLines.join('\n')+'\n\n🕒 <b>Waktu:</b> '+time+'\n━━━━━━━━━━━━━━━━━━\n<i>Segera periksa kondisi instalasi dan perangkat.</i>';
       state.lastReminderAt=now;
     } else if(recovered.length){
-      message='✅ <b>PEMBARUAN KONDISI SISTEM</b>\n'+header+'\n\n<b>PARAMETER PULIH ('+recovered.length+')</b>\n'+recovered.map(a=>'• '+alarmHtml_(a.label)+': '+a.value.toFixed(2)+' '+alarmHtml_(a.unit)).join('\n')+
+      message='✅ <b>PEMBARUAN KONDISI SISTEM</b>\n'+header+'\n\n<b>PARAMETER PULIH ('+recovered.length+')</b>\n'+recovered.map(a=>'• '+alarmHtml_(a.label)+': '+telegramDisplayNumber_(a.value,2)+' '+alarmHtml_(a.unit)).join('\n')+
         (activeLines.length?'\n\n<b>MASIH ABNORMAL ('+activeLines.length+')</b>\n'+activeLines.join('\n'):'\n\n🎉 <b>Semua parameter kembali normal.</b>')+'\n\n🕒 <b>Waktu:</b> '+time;
       if(!activeLines.length)state.lastReminderAt=0;
     } else if(activeLines.length&&cfg.reminderEnabled&&(!state.lastReminderAt||now-state.lastReminderAt>=reminderMs)){
