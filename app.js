@@ -125,7 +125,7 @@ function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
   if(p!=='history'&&selId){selId='';$('historySearch').value=''}
-  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='controlRelay')loadRelayControlPage().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e))}}
+  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='controlRelay')loadRelayControlPage().catch(e=>toast(e.message||e));if(p==='monitoring')loadMonitoringRelayHistory();if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e))}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
@@ -163,7 +163,7 @@ async function refresh(showLoading=false){
     renderAll();
     await monitoringTask;
     monitoringLoading=false;
-    if(session)renderAll();
+    if(session){renderAll();if($('page-monitoring')?.classList.contains('active'))await loadMonitoringRelayHistory();}
   }catch(err){setConnectionStatus('is-error','GAGAL TERHUBUNG KE SERVER');console.warn('Pembaruan kWh-Ku gagal:',err?.message||err);throw err}
   finally{refreshInFlight=false;if(showLoading)$('appView').classList.remove('is-loading')}
 }
@@ -272,6 +272,57 @@ function openEditCustomer(id){
   };
  }
 function renderTokens(){}
+
+let monitoringRelayHistoryInFlight=false;
+function monitoringRelayHistoryDate(value){
+ const d=new Date(value);
+ return Number.isFinite(d.getTime())
+  ?d.toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'medium'})
+  :'Waktu tidak tersedia';
+}
+function renderMonitoringRelayHistory(result){
+ const rows=Array.isArray(result?.rows)?result.rows:[];
+ const state=$('monitorRelayHistoryState'),body=$('monitorRelayHistoryRows');
+ if(state)state.textContent=result?.ok
+  ?(rows.length?rows.length+' kejadian terbaru ditampilkan.':'Belum ada riwayat kontrol relay.')
+  :'Riwayat kontrol relay gagal dimuat: '+(result?.message||'Respons tidak valid.');
+ if(!body)return;
+ body.innerHTML=rows.map(row=>{
+  const stateText=row.status
+   ?String(row.status)+(row.actualState?' · '+row.actualState:'')
+   :String(row.state||'—');
+  const detail=[row.reason,row.detail,row.commandId?'ID: '+row.commandId:'',row.ackAt?'ACK: '+monitoringRelayHistoryDate(row.ackAt):'']
+   .filter(Boolean).join(' · ');
+  return '<tr><td>'+esc(monitoringRelayHistoryDate(row.timestamp))+'</td>'+
+   '<td>'+esc(row.type||'EVENT')+'</td>'+
+   '<td>'+esc(stateText)+'</td>'+
+   '<td>'+esc(row.source||'—')+'</td>'+
+   '<td>'+esc(detail||'—')+'</td></tr>';
+ }).join('')||'<tr><td colspan="5" class="empty">Belum ada riwayat kontrol relay.</td></tr>';
+}
+async function loadMonitoringRelayHistory(){
+ if(!session||monitoringRelayHistoryInFlight)return;
+ monitoringRelayHistoryInFlight=true;
+ const state=$('monitorRelayHistoryState'),button=$('refreshMonitoringRelayHistory');
+ if(state)state.textContent='Memuat lima kejadian terbaru…';
+ if(button){button.disabled=true;button.textContent='Memuat…'}
+ try{
+  const target=admin()?'':String(session.customerId||'');
+  const result=await api('getRelayHistory',session,target,5);
+  if(!result?.ok)throw Error(result?.message||'Gagal memuat riwayat kontrol relay.');
+  const rows=(Array.isArray(result.rows)?result.rows:[])
+   .filter(row=>row&&row.timestamp&&Number.isFinite(new Date(row.timestamp).getTime()))
+   .sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))
+   .slice(0,5);
+  renderMonitoringRelayHistory({...result,rows});
+ }catch(error){
+  renderMonitoringRelayHistory({ok:false,message:error?.message||String(error)});
+ }finally{
+  monitoringRelayHistoryInFlight=false;
+  if(button){button.disabled=false;button.textContent='Muat ulang'}
+ }
+}
+$('refreshMonitoringRelayHistory')?.addEventListener('click',()=>loadMonitoringRelayHistory());
 
 function renderMonitoring(){
   const monitorStart=$('monitorStart')?.value||'',monitorEnd=$('monitorEnd')?.value||'';
@@ -703,18 +754,6 @@ async function loadRelayControlPage(options={}){
    relayPageRow=rows.find(x=>String(x.customerId)===String(session.customerId))||rows[0]||null;
   }
   renderRelayControlPage();
-  if(options.history!==false){
-   if(!relayPageTargetId()){
-    renderRelayControlHistory({ok:true,rows:[]});
-   }else{
-    try{
-     const history=await api('getRelayHistory',session,relayPageTargetId(),50);
-     renderRelayControlHistory(history);
-    }catch(error){
-     renderRelayControlHistory({ok:false,message:error?.message||String(error)});
-    }
-   }
-  }
  }finally{
   relayPageFetchInFlight=false;
  }
@@ -762,11 +801,6 @@ function renderRelayControlPage(){
  $('relayPageDesired').textContent=r.desiredState||'—';
  $('relayPageUpdated').textContent=relayPageTime(r.updatedAt||r.reportedAt);
  $('relayPageSave').disabled=relayPageCommandInFlight||pending;
-}
-function renderRelayControlHistory(result){
- const rows=Array.isArray(result?.rows)?result.rows:[];
- $('relayPageHistoryState').textContent=result?.ok?rows.length+' catatan ditampilkan.':('Riwayat gagal dimuat: '+(result?.message||'Respons tidak valid.'));
- $('relayPageHistory').innerHTML=rows.map(x=>'<tr><td>'+esc(relayPageTime(x.timestamp))+'</td><td>'+esc(x.type||'EVENT')+'</td><td>'+esc(x.state||'—')+'</td><td>'+esc(x.source||'—')+'</td><td>'+esc(x.detail||x.reason||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada riwayat kontrol relay.</td></tr>';
 }
 async function saveRelayPageConfig(extra={}){
  if(!relayPageRow)throw Error('Status relay belum dimuat.');
@@ -835,7 +869,6 @@ $('relayPageSave').addEventListener('click',async()=>{
 $('relayPageOn').addEventListener('click',()=>sendRelayPageCommand('MANUAL','ON').catch(e=>toast(e.message||String(e))));
 $('relayPageOff').addEventListener('click',()=>sendRelayPageCommand('MANUAL','OFF').catch(e=>toast(e.message||String(e))));
 $('relayPageRefresh').addEventListener('click',()=>loadRelayControlPage().catch(e=>toast(e.message||String(e))));
-$('relayPageHistoryRefresh').addEventListener('click',()=>loadRelayControlPage().catch(e=>toast(e.message||String(e))));
 // Refresh relay telemetry every 5 seconds only while its page is visible.
 setInterval(()=>{
  if(session&&!relayPageCommandInFlight&&$('page-controlRelay')?.classList.contains('active')){

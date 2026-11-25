@@ -115,6 +115,11 @@
         <div class="panel-head"><div><h3>Log gangguan</h3><p>Gangguan dan pemulihan yang terdeteksi oleh server.</p></div></div>
         <div class="table-wrap"><table><thead><tr><th>Waktu</th><th>ID pelanggan</th><th>Perangkat</th><th>Jenis</th><th>Tingkat</th><th>Detail</th><th>Pulih pada</th></tr></thead><tbody id="monitorIncidents"><tr><td colspan="7" class="empty">Belum ada gangguan tercatat.</td></tr></tbody></table></div>
       </div>
+      <div class="panel table-panel monitoring-panel monitoring-relay-history-panel">
+        <div class="panel-head"><div><h3>Riwayat kontrol relay</h3><p>Lima kejadian terbaru, mencakup perintah website dan konfirmasi ESP32.</p></div><button class="secondary" id="refreshMonitoringRelayHistory" type="button">Muat ulang</button></div>
+        <div id="monitorRelayHistoryState" class="relay-history-state" role="status">Riwayat kontrol relay belum dimuat.</div>
+        <div class="table-wrap"><table class="monitoring-relay-history-table"><thead><tr><th>Waktu</th><th>Kejadian</th><th>Status</th><th>Sumber</th><th>Detail</th></tr></thead><tbody id="monitorRelayHistoryRows"><tr><td colspan="5" class="empty">Menunggu riwayat kontrol relay…</td></tr></tbody></table></div>
+      </div>
       <p class="sub monitoring-note">Status Offline berarti tidak ada pembacaan baru selama lebih dari 3 menit. Penyebab spesifik seperti listrik padam atau Wi-Fi terputus tidak dapat dipastikan hanya dari ketiadaan data.</p>
     </section>
     <section id="page-controlRelay" class="section">
@@ -133,7 +138,7 @@
   </div>
   <div class="relay-control-footer"><label class="relay-control-enable"><input id="relayPageEnabled" type="checkbox"><span>Aktifkan kendali relay</span></label><button id="relayPageSave" class="primary" type="button">Simpan konfigurasi</button><button id="relayPageRefresh" class="secondary" type="button">Muat ulang status</button><span id="relayPageStatus" role="status">Konfigurasi belum dimuat.</span></div>
  </div>
- <div class="panel relay-control-history"><div class="panel-head"><div><h3>Riwayat kontrol relay</h3><p>Catatan perintah website dan konfirmasi ESP32.</p></div><button id="relayPageHistoryRefresh" class="secondary" type="button">Muat ulang riwayat</button></div><div id="relayPageHistoryState" class="relay-history-state">Riwayat belum dimuat.</div><div class="table-wrap"><table class="relay-history-table"><thead><tr><th>WAKTU</th><th>KEJADIAN</th><th>STATUS</th><th>SUMBER</th><th>DETAIL</th></tr></thead><tbody id="relayPageHistory"><tr><td colspan="5" class="empty">Belum ada data.</td></tr></tbody></table></div></div>
+ 
 </section>
 \n    <section id="page-alarmSettings" class="section">
       
