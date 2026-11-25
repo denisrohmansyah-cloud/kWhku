@@ -46,6 +46,7 @@
       <button data-page="calendar"><span class="ico">▣</span>Kalender Pemakaian</button>
       <button data-page="history"><span class="ico">↗</span>Riwayat Penggunaan</button>
       <button data-page="monitoring"><span class="ico">⌁</span>Monitoring Teknis</button>
+      <button data-page="controlRelay"><span class="ico">⏻</span>Kontrol Relay</button>
       <button data-page="alarmSettings"><span class="ico">♢</span>Pengaturan Alarm</button><button data-page="powerRequest"><span class="ico">⚡</span>Pengajuan Penambahan Daya</button>
       <button data-page="customers" class="admin-only hidden"><span class="ico">♙</span>Data Pelanggan</button>
       
@@ -116,7 +117,25 @@
       </div>
       <p class="sub monitoring-note">Status Offline berarti tidak ada pembacaan baru selama lebih dari 3 menit. Penyebab spesifik seperti listrik padam atau Wi-Fi terputus tidak dapat dipastikan hanya dari ketiadaan data.</p>
     </section>
-    <section id="page-alarmSettings" class="section">
+    <section id="page-controlRelay" class="section">
+ <div class="panel relay-control-page">
+  <div class="relay-control-heading"><div><span class="relay-kicker">ENERGY CONTROL SYSTEM</span><h3>Kontrol Relay CH1</h3><p>Kontrol output ESP32 dan pantau keputusan proteksi secara langsung.</p></div><span id="relayPageModeBadge" class="badge">MENUNGGU</span></div>
+  <div class="relay-control-overview">
+   <article class="relay-control-stat"><small>STATUS RELAY</small><strong id="relayPageOutput">UNKNOWN</strong><span id="relayPageOutputNote">Menunggu laporan ESP32</span></article>
+   <article class="relay-control-stat"><small>MODE OPERASI</small><strong id="relayPageMode">—</strong><div class="relay-mode-switch"><button type="button" data-control-mode="AUTO">AUTO</button><button type="button" data-control-mode="MANUAL">MANUAL</button></div></article>
+   <article class="relay-control-stat"><small>STATUS ESP32</small><strong id="relayPageDevice">UNKNOWN</strong><span id="relayPageLastSeen">Belum ada heartbeat</span></article>
+  </div>
+  <div class="relay-control-section"><div class="relay-control-section-title"><h4>Kontrol manual</h4><span id="relayPageManualHint">Pilih mode MANUAL untuk mengaktifkan tombol.</span></div>
+   <div class="relay-control-buttons"><button id="relayPageOn" class="relay-control-button is-on" type="button" disabled><b>⏻ ON</b><span>Aktifkan relay</span></button><button id="relayPageOff" class="relay-control-button is-off" type="button" disabled><b>⏻ OFF</b><span>Matikan relay</span></button></div>
+  </div>
+  <div class="relay-interlock"><div class="relay-control-section-title"><h4>Kondisi interlock dan keputusan ESP32</h4><span id="relayPageDecision" class="relay-decision-chip">UNKNOWN</span></div><p id="relayPageReason">Menunggu evaluasi sensor ESP32.</p>
+   <div class="relay-interlock-grid"><div><small>Keputusan sistem</small><strong id="relayPageDecisionValue">UNKNOWN</strong></div><div><small>Alasan / status</small><strong id="relayPageReasonShort">—</strong></div><div><small>Perintah terakhir</small><strong id="relayPageDesired">—</strong></div><div><small>Update terakhir</small><strong id="relayPageUpdated">—</strong></div></div>
+  </div>
+  <div class="relay-control-footer"><label class="relay-control-enable"><input id="relayPageEnabled" type="checkbox"><span>Aktifkan kendali relay</span></label><button id="relayPageSave" class="primary" type="button">Simpan konfigurasi</button><button id="relayPageRefresh" class="secondary" type="button">Muat ulang status</button><span id="relayPageStatus" role="status">Konfigurasi belum dimuat.</span></div>
+ </div>
+ <div class="panel relay-control-history"><div class="panel-head"><div><h3>Riwayat kontrol relay</h3><p>Catatan perintah website dan konfirmasi ESP32.</p></div><button id="relayPageHistoryRefresh" class="secondary" type="button">Muat ulang riwayat</button></div><div id="relayPageHistoryState" class="relay-history-state">Riwayat belum dimuat.</div><div class="table-wrap"><table class="relay-history-table"><thead><tr><th>WAKTU</th><th>KEJADIAN</th><th>STATUS</th><th>SUMBER</th><th>DETAIL</th></tr></thead><tbody id="relayPageHistory"><tr><td colspan="5" class="empty">Belum ada data.</td></tr></tbody></table></div></div>
+</section>
+\n    <section id="page-alarmSettings" class="section">
       
       <div class="panel"><div class="panel-head"><div><h3>Konfigurasi alarm dan pengingat</h3><p>Atur ambang batas dan aktif/nonaktifkan notifikasi alarm sesuai kebutuhan.</p></div><span class="badge">Server</span></div><form id="alarmConfigForm" class="alarm-config-form"><div class="alarm-switch-grid">
 <div class="alarm-switch-card"><div><strong>Aktifkan sistem alarm</strong><small>ON: evaluasi ambang dan kirim peringatan Telegram. OFF: hentikan seluruh notifikasi alarm.</small></div><label class="toggle-switch" for="alarmEnabled"><input id="alarmEnabled" type="checkbox" checked><span class="toggle-slider"></span></label></div>
