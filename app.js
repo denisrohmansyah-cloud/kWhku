@@ -190,12 +190,30 @@ function renderAll(){if(!session)return;
   $('statusBadge').textContent=admin()?'● '+on+' online':!c?.online?'● Offline':heavy?'● Beban tinggi':'● Normal';
   $('statusBadge').className='badge '+(!admin()&&(!c?.online||heavy)?'red':'');
   renderChart();renderRecent();renderHistory();renderPeriodRecap();renderCalendar();renderCustomers();renderTokens();renderMonitoring()}
-function renderChart(){const ds=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);ds.push(dk(d))}
-  const rs=rows(),mode=$('chartMode')?.value||'daily';let v=ds.map(k=>rs.filter(r=>r.date===k).reduce((a,r)=>a+r.kwh,0));
+function renderChart(){
+  const ds=[];
+  for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);ds.push(dk(d))}
+  const rs=rows(),mode=$('chartMode')?.value||'daily';
+  let v=ds.map(k=>rs.filter(r=>r.date===k).reduce((a,r)=>a+r.kwh,0));
   if(mode==='cumulative'){let total=0;v=v.map(x=>(total+=x))}
-  const mx=Math.max(0.001,...v);$('chartSubtitle').textContent=mode==='daily'?'Pemakaian energi selama 7 hari terakhir':'Akumulasi energi selama 7 hari terakhir';
-  $('chart').innerHTML=ds.map((k,i)=>`<div class="bar-col"><div class="bar ${i===6?'current':''}" style="height:${Math.max(5,v[i]/mx*90)}%" title="${fmtEnergy(v[i])} kWh"></div><small>${k.slice(8)}/${k.slice(5,7)}</small></div>`).join('');
-  const summaryValue=mode==='daily'?v.reduce((sum,value)=>sum+value,0):(v[v.length-1]||0);
+  const safeValues=v.map(x=>Number.isFinite(Number(x))?Math.max(0,Number(x)):0);
+  const mx=Math.max(0.001,...safeValues);
+  $('chartSubtitle').textContent=mode==='daily'?'Pemakaian energi selama 7 hari terakhir':'Akumulasi energi selama 7 hari terakhir';
+
+  // Responsive SVG line chart: values remain unchanged; only the visualization changes.
+  const xFor=i=>30+(640*i/Math.max(1,ds.length-1));
+  const yFor=value=>142-(value/mx)*110;
+  const points=safeValues.map((value,i)=>({x:xFor(i),y:yFor(value),value}));
+  const path=points.map((p,i)=>(i?'L':'M')+' '+p.x.toFixed(2)+' '+p.y.toFixed(2)).join(' ');
+  const grid=[30,67,104,141].map(y=>'<line class="line-chart-grid" x1="8" y1="'+y+'" x2="692" y2="'+y+'"></line>').join('');
+  const markers=points.map((p,i)=>'<circle class="line-chart-point'+(i===points.length-1?' is-current':'')+'" cx="'+p.x.toFixed(2)+'" cy="'+p.y.toFixed(2)+'" r="'+(i===points.length-1?5.5:4)+'"><title>'+ds[i]+': '+fmtEnergy(p.value)+' kWh</title></circle>').join('');
+  const labels=ds.map(k=>'<span>'+k.slice(8)+'/'+k.slice(5,7)+'</span>').join('');
+  $('chart').classList.add('line-chart');
+  $('chart').setAttribute('role','img');
+  $('chart').setAttribute('aria-label','Grafik garis '+(mode==='daily'?'pemakaian harian':'energi kumulatif')+' selama tujuh hari terakhir');
+  $('chart').innerHTML='<svg class="line-chart-svg" viewBox="0 0 700 170" preserveAspectRatio="none" aria-hidden="true">'+grid+'<path class="line-chart-path" d="'+path+'"></path>'+markers+'</svg><div class="line-chart-labels" aria-hidden="true">'+labels+'</div>';
+
+  const summaryValue=mode==='daily'?safeValues.reduce((sum,value)=>sum+value,0):(safeValues[safeValues.length-1]||0);
   $('chartSummary').textContent=(mode==='daily'?'Total pemakaian 7 hari: ':'Akumulasi pemakaian 7 hari: ')+fmtEnergy(summaryValue)+' kWh';
 }
 function renderRecent(){$('recentTable').innerHTML=sorted().slice(0,5).map(r=>`<tr><td>${dLabel(r.date)}</td><td><b>${fmtEnergy(r.kwh)} kWh</b></td><td>${rp(r.costRp)}</td><td>${badge(r)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Belum ada data dari ESP32.</td></tr>'}
