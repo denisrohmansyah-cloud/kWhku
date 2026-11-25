@@ -125,7 +125,7 @@ function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
   if(p!=='history'&&selId){selId='';$('historySearch').value=''}
-  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e));loadRelaySettings().catch(e=>toast(e.message||e));loadRelayHistory().catch(e=>toast(e.message||e));if(!admin())loadTelegramLinkStatus().catch(e=>toast(e.message||e))}}
+  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e))}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
@@ -349,7 +349,7 @@ $('exportHistory').onclick=()=>{const q=[['Tanggal','ID Pelanggan','Nama','kWh',
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='rekap-kWh-Ku.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('CSV diunduh')};
 setInterval(()=>{if(session)refresh().catch(()=>{})},Math.max(10000,Number(CFG.REFRESH_MS)||30000));
 // Relay telemetry is reported by ESP32 every 5 seconds; refresh its panel independently.
-setInterval(()=>{if(session&&$('page-alarmSettings')?.classList.contains('active'))loadRelayStatus().catch(()=>{})},1500);
+
 
  
 // ---- Pengajuan penambahan daya
