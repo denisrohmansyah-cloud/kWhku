@@ -119,13 +119,13 @@ $('logout').onclick=()=>{session=null;try{sessionStorage.removeItem('kwhku_sessi
 $('mobileMenu').onclick=()=>$('sidebar').classList.toggle('open');
 
 // ---- Navigasi
-const titles={alarmSettings:['Pengaturan Alarm','Atur ambang peringatan dan pengingat ESP32'],dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],monitoring:['Monitoring Teknis','Pembacaan sensor, status koneksi, dan gangguan'],customers:['Data Pelanggan','Kelola pelanggan terdaftar'],powerRequest:['Pengajuan Penambahan Daya','Ajukan perubahan daya dan pantau status persetujuan']};
+const titles={controlRelay:['Kontrol Relay','Pantau dan kendalikan output relay ESP32'],alarmSettings:['Pengaturan Alarm','Atur ambang peringatan dan pengingat ESP32'],dashboard:['Dashboard','Ringkasan penggunaan listrik'],calendar:['Kalender Pemakaian','Lihat pemakaian per tanggal'],history:['Riwayat Penggunaan','Energi dan biaya per hari'],monitoring:['Monitoring Teknis','Pembacaan sensor, status koneksi, dan gangguan'],customers:['Data Pelanggan','Kelola pelanggan terdaftar'],powerRequest:['Pengajuan Penambahan Daya','Ajukan perubahan daya dan pantau status persetujuan']};
 function showPage(p){if(p==='customers'&&!admin())p='dashboard';
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));$('page-'+p).classList.add('active');
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $('pageHeading').textContent=titles[p][0];$('pageSub').textContent=titles[p][1];$('sidebar').classList.remove('open');
   if(p!=='history'&&selId){selId='';$('historySearch').value=''}
-  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e))}}
+  renderAll();if(p==='powerRequest')loadPowerRequests().catch(e=>toast(e.message||e));if(p==='controlRelay')loadRelayControlPage().catch(e=>toast(e.message||e));if(p==='alarmSettings'){loadAlarmSettings().catch(e=>toast(e.message||e))}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
 
@@ -675,3 +675,75 @@ $('alarmConfigForm')?.addEventListener('submit',async e=>{
  const cfg={alarmEnabled:$('alarmEnabled').checked,alarmDeviceOfflineEnabled:$('alarmDeviceOfflineEnabled').checked,alarmVoltageMinEnabled:$('alarmVoltageMinEnabled').checked,alarmVoltageMaxEnabled:$('alarmVoltageMaxEnabled').checked,alarmCurrentMaxEnabled:$('alarmCurrentMaxEnabled').checked,alarmPowerMaxEnabled:$('alarmPowerMaxEnabled').checked,alarmFrequencyMinEnabled:$('alarmFrequencyMinEnabled').checked,alarmFrequencyMaxEnabled:$('alarmFrequencyMaxEnabled').checked,alarmPowerFactorMinEnabled:$('alarmPowerFactorMinEnabled').checked,alarmTemperatureMaxEnabled:$('alarmTemperatureMaxEnabled').checked,alarmHumidityMinEnabled:$('alarmHumidityMinEnabled').checked,alarmHumidityMaxEnabled:$('alarmHumidityMaxEnabled').checked,buzzerEnabled:$('alarmBuzzerEnabled').checked,maxTemperatureC:Number($('alarmMaxTemperature').value),maxCurrentA:Number($('alarmMaxCurrent').value),maxPowerW:Number($('alarmMaxPower').value),minVoltageV:Number($('alarmMinVoltage').value),maxVoltageV:Number($('alarmMaxVoltage').value),minFrequencyHz:Number($('alarmMinFrequency').value),maxFrequencyHz:Number($('alarmMaxFrequency').value),minPowerFactor:Number($('alarmMinPowerFactor').value),minHumidityPct:Number($('alarmMinHumidity').value),maxHumidityPct:Number($('alarmMaxHumidity').value),reminderEnabled:$('alarmReminderEnabled').checked,reminderIntervalMinutes:Number($('alarmReminderInterval').value)};
  try{const r=await api('saveAlarmConfig',session,cfg,admin()?$('alarmCustomer').value:session.customerId);if(!r?.ok)throw Error(r?.message||'Gagal menyimpan');$('alarmConfigStatus').textContent='Tersimpan '+new Date().toLocaleString('id-ID')+'. ESP32 akan mengambil konfigurasi pada sinkronisasi berikutnya.';toast('Konfigurasi alarm tersimpan')}catch(err){toast(err.message||String(err))}finally{b.disabled=false;b.textContent='Simpan konfigurasi'}
 });
+\n
+/* Dedicated relay control page; uses existing authenticated Apps Script endpoints. */
+let relayPageTarget='',relayPageRow=null;
+function relayPageTime(value){if(!value)return '—';const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'medium'});}
+function relayPageTargetId(){return admin()?(relayPageTarget||customers[0]?.customerId||''):session?.customerId||'';}
+async function loadRelayControlPage(){
+ if(!session)return;
+ const target=relayPageTargetId();
+ const [status,history]=await Promise.all([
+  api('getRelayStatus',session,target),
+  api('getRelayHistory',session,target,50)
+ ]);
+ if(!status?.ok)throw Error(status?.message||'Status relay gagal dimuat');
+ relayPageRow=(status.rows||[])[0]||null;
+ renderRelayControlPage();
+ renderRelayControlHistory(history);
+}
+function renderRelayControlPage(){
+ const r=relayPageRow;if(!r)return;
+ const fresh=r.outputState!=='STALE'&&r.outputState!=='UNKNOWN';
+ $('relayPageOutput').textContent=r.outputState||'UNKNOWN';
+ $('relayPageOutput').dataset.state=r.outputState||'UNKNOWN';
+ $('relayPageOutputNote').textContent=(r.reason||'Status output ESP32')+(r.statusAgeSeconds!=null?' · '+r.statusAgeSeconds+' dtk lalu':'');
+ $('relayPageMode').textContent=r.mode==='AUTO'?'OTOMATIS':'MANUAL';
+ $('relayPageModeBadge').textContent=r.mode==='AUTO'?'MODE OTOMATIS':'MODE MANUAL';
+ $('relayPageDevice').textContent=fresh?'ONLINE':(r.outputState==='STALE'?'STALE':'OFFLINE');
+ $('relayPageLastSeen').textContent=r.reportedAt?'Update '+relayPageTime(r.reportedAt):'Belum ada heartbeat';
+ document.querySelectorAll('[data-control-mode]').forEach(b=>b.classList.toggle('is-active',b.dataset.controlMode===r.mode));
+ $('relayPageOn').disabled=!r.enabled||r.mode!=='MANUAL'||!fresh;
+ $('relayPageOff').disabled=!r.enabled||r.mode!=='MANUAL'||!fresh;
+ $('relayPageManualHint').textContent=r.mode==='AUTO'?'Mode AUTO aktif. Pilih MANUAL untuk menggunakan tombol ON/OFF.':(!r.enabled?'Kendali relay dinonaktifkan.':'Tombol aktif jika ESP32 online dan status sensor valid.');
+ $('relayPageEnabled').checked=!!r.enabled;
+ $('relayPageDecision').textContent=r.decisionState||'UNKNOWN';
+ $('relayPageDecisionValue').textContent=r.decisionState||'UNKNOWN';
+ $('relayPageReason').textContent=r.decisionReason||'Belum ada alasan dari ESP32.';
+ $('relayPageReasonShort').textContent=r.reason||r.decisionReason||'—';
+ $('relayPageDesired').textContent=r.desiredState||'—';
+ $('relayPageUpdated').textContent=relayPageTime(r.updatedAt||r.reportedAt);
+}
+function renderRelayControlHistory(result){
+ const rows=Array.isArray(result?.rows)?result.rows:[];
+ $('relayPageHistoryState').textContent=result?.ok?rows.length+' catatan ditampilkan.':('Riwayat gagal dimuat: '+(result?.message||'Respons tidak valid.'));
+ $('relayPageHistory').innerHTML=rows.map(x=>'<tr><td>'+esc(relayPageTime(x.timestamp))+'</td><td>'+esc(x.type||'EVENT')+'</td><td>'+esc(x.state||'—')+'</td><td>'+esc(x.source||'—')+'</td><td>'+esc(x.detail||x.reason||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Belum ada riwayat kontrol relay.</td></tr>';
+}
+async function saveRelayPageConfig(extra={}){
+ if(!relayPageRow)throw Error('Status relay belum dimuat.');
+ const payload={...(relayPageRow.relayConfig||{}),enabled:$('relayPageEnabled').checked,mode:extra.mode||relayPageRow.mode||'MANUAL',autoRecover:relayPageRow.relayConfig?.autoRecover!==false,recoverStableSeconds:Number(relayPageRow.relayConfig?.recoverStableSeconds)||60};
+ const result=await api('saveRelayConfig',session,payload,relayPageTargetId());
+ if(!result?.ok)throw Error(result?.message||'Konfigurasi relay gagal disimpan.');
+ $('relayPageStatus').textContent='Konfigurasi tersimpan.';
+ await loadRelayControlPage();
+}
+async function sendRelayPageCommand(mode,state){
+ if(!relayPageRow)throw Error('Status relay belum dimuat.');
+ if(relayPageRow.mode!=='MANUAL')throw Error('Perintah ON/OFF hanya tersedia pada mode MANUAL.');
+ if(!relayPageRow.enabled)throw Error('Aktifkan kendali relay terlebih dahulu.');
+ if(relayPageRow.outputState==='STALE'||relayPageRow.outputState==='UNKNOWN')throw Error('ESP32 belum mengirim status terbaru.');
+ if(!confirm('Kirim perintah relay '+state+'?'))return;
+ const result=await api('setRelayCommand',session,mode,state,relayPageTargetId());
+ if(!result?.ok)throw Error(result?.message||'Perintah relay gagal dikirim.');
+ toast('Perintah '+state+' dikirim. Menunggu konfirmasi ESP32.');
+ await loadRelayControlPage();
+}
+document.querySelectorAll('[data-control-mode]').forEach(b=>b.addEventListener('click',async()=>{
+ try{await saveRelayPageConfig({mode:b.dataset.controlMode});toast('Mode relay diperbarui.')}
+ catch(e){toast(e.message||String(e))}
+}));
+$('relayPageSave').addEventListener('click',async()=>{const b=$('relayPageSave');b.disabled=true;try{await saveRelayPageConfig();toast('Konfigurasi relay tersimpan.')}catch(e){toast(e.message||String(e))}finally{b.disabled=false}});
+$('relayPageOn').addEventListener('click',()=>sendRelayPageCommand('MANUAL','ON').catch(e=>toast(e.message||String(e))));
+$('relayPageOff').addEventListener('click',()=>sendRelayPageCommand('MANUAL','OFF').catch(e=>toast(e.message||String(e))));
+$('relayPageRefresh').addEventListener('click',()=>loadRelayControlPage().catch(e=>toast(e.message||String(e))));
+$('relayPageHistoryRefresh').addEventListener('click',()=>loadRelayControlPage().catch(e=>toast(e.message||String(e))));
