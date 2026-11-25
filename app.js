@@ -201,17 +201,19 @@ function renderChart(){
   $('chartSubtitle').textContent=mode==='daily'?'Pemakaian energi selama 7 hari terakhir':'Akumulasi energi selama 7 hari terakhir';
 
   // Responsive SVG line chart: values remain unchanged; only the visualization changes.
-  const xFor=i=>30+(640*i/Math.max(1,ds.length-1));
+  const xFor=i=>48+(604*i/Math.max(1,ds.length-1));
   const yFor=value=>142-(value/mx)*110;
   const points=safeValues.map((value,i)=>({x:xFor(i),y:yFor(value),value}));
   const path=points.map((p,i)=>(i?'L':'M')+' '+p.x.toFixed(2)+' '+p.y.toFixed(2)).join(' ');
   const grid=[30,67,104,141].map(y=>'<line class="line-chart-grid" x1="8" y1="'+y+'" x2="692" y2="'+y+'"></line>').join('');
   const markers=points.map((p,i)=>'<circle class="line-chart-point'+(i===points.length-1?' is-current':'')+'" cx="'+p.x.toFixed(2)+'" cy="'+p.y.toFixed(2)+'" r="'+(i===points.length-1?5.5:4)+'"><title>'+ds[i]+': '+fmtEnergy(p.value)+' kWh</title></circle>').join('');
+  // Each date gets its own exact energy label; use three decimals to retain small kWh readings.
+  const valueLabels=points.map((p,i)=>'<span class="line-chart-value-label" style="left:'+((p.x/700)*100).toFixed(2)+'%;top:'+((p.y/170)*100).toFixed(2)+'%">'+truncateDisplay(p.value,3)+' kWh</span>').join('');
   const labels=ds.map(k=>'<span>'+k.slice(8)+'/'+k.slice(5,7)+'</span>').join('');
   $('chart').classList.add('line-chart');
   $('chart').setAttribute('role','img');
   $('chart').setAttribute('aria-label','Grafik garis '+(mode==='daily'?'pemakaian harian':'energi kumulatif')+' selama tujuh hari terakhir');
-  $('chart').innerHTML='<svg class="line-chart-svg" viewBox="0 0 700 170" preserveAspectRatio="none" aria-hidden="true">'+grid+'<path class="line-chart-path" d="'+path+'"></path>'+markers+'</svg><div class="line-chart-labels" aria-hidden="true">'+labels+'</div>';
+  $('chart').innerHTML='<svg class="line-chart-svg" viewBox="0 0 700 170" preserveAspectRatio="none" aria-hidden="true">'+grid+'<path class="line-chart-path" d="'+path+'"></path>'+markers+'</svg><div class="line-chart-value-labels" aria-hidden="true">'+valueLabels+'</div><div class="line-chart-labels" aria-hidden="true">'+labels+'</div>';
 
   const summaryValue=mode==='daily'?safeValues.reduce((sum,value)=>sum+value,0):(safeValues[safeValues.length-1]||0);
   $('chartSummary').textContent=(mode==='daily'?'Total pemakaian 7 hari: ':'Akumulasi pemakaian 7 hari: ')+fmtEnergy(summaryValue)+' kWh';

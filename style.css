@@ -477,6 +477,25 @@ input,select,textarea{max-width:100%;min-width:0}
   vector-effect:non-scaling-stroke;
 }
 .line-chart-point.is-current{fill:var(--red);stroke:var(--red)}
+.line-chart-value-labels{
+  position:absolute;
+  inset:8px 6px 34px;
+  pointer-events:none;
+}
+.line-chart-value-label{
+  position:absolute;
+  transform:translate(-50%,calc(-100% - 8px));
+  padding:2px 4px;
+  border-radius:5px;
+  background:rgba(255,255,255,.94);
+  color:var(--ink);
+  font-size:11px;
+  line-height:1.2;
+  font-weight:700;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 1px 0 #fff;
+}
 .line-chart-labels{
   position:absolute;
   left:5px;
@@ -493,9 +512,11 @@ input,select,textarea{max-width:100%;min-width:0}
   .chart.line-chart{height:180px}
   .line-chart-svg{height:134px}
   .line-chart-labels span{font-size:9px}
+  .line-chart-value-label{font-size:9px;padding:1px 3px}
 }
 @media(max-width:380px){
   .chart.line-chart{height:160px}
   .line-chart-svg{height:114px}
   .line-chart-labels span{font-size:8px}
+  .line-chart-value-label{font-size:8px;padding:1px 2px}
 }
