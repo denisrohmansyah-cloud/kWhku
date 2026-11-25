@@ -859,11 +859,40 @@ function setRelayCommand_(session,mode,state,targetId) {
   }
 
   ensureRelaySheets_();
-  const commandId = 'RLY-' + Utilities.getUuid();
-  const now = new Date();
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
+    // Enforce one pending command per device on the server, even if callers bypass the UI.
+    const latest = latestRelayCommand_(id, customer.meterId);
+    if (latest && String(latest.status).toUpperCase() === 'PENDING') {
+      const createdAt = new Date(latest.createdAt).getTime();
+      const ageMs = Date.now() - createdAt;
+      if (!Number.isFinite(createdAt) || ageMs < 0 || ageMs <= 120000) {
+        return {
+          ok:false,
+          status:'PENDING',
+          commandId:String(latest.commandId || ''),
+          message:'Masih ada perintah relay yang menunggu konfirmasi ESP32. Tunggu hingga selesai sebelum mengirim perintah baru.'
+        };
+      }
+
+      // Expire a stale command before allowing another command into the queue.
+      const commandRows = relayRows_('commands');
+      const staleIndex = commandRows.findIndex(row =>
+        String(row.commandId) === String(latest.commandId));
+      if (staleIndex >= 0) {
+        SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID)
+          .getSheetByName(RELAY_SHEETS_.commands[0])
+          .getRange(staleIndex + 2, 9).setValue('EXPIRED');
+        relayLog_(id, customer.meterId, 'COMMAND_EXPIRED',
+          String(latest.desiredState || ''),
+          'Perintah kedaluwarsa setelah 120 detik', 'SERVER',
+          String(latest.commandId));
+      }
+    }
+
+    const commandId = 'RLY-' + Utilities.getUuid();
+    const now = new Date();
     const sh = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID)
       .getSheetByName(RELAY_SHEETS_.commands[0]);
     sh.appendRow([commandId,id,customer.meterId,isAutoReset?'AUTO_RESET':'MANUAL',isAutoReset?'ON':requestedState,
