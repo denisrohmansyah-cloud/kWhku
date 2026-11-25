@@ -441,3 +441,61 @@ input,select,textarea{max-width:100%;min-width:0}
  .monitoring-relay-history-panel .panel-head button{width:100%}
  .monitoring-relay-history-panel .relay-history-state{margin:0 14px 10px}
 }
+
+
+/* Energy consumption chart — responsive line graph */
+.chart.line-chart{
+  position:relative;
+  display:block;
+  height:210px;
+  padding:0 5px 34px;
+  border-bottom:1px solid var(--line);
+  background:none;
+  overflow:hidden;
+}
+.line-chart-svg{
+  position:absolute;
+  top:8px;
+  left:6px;
+  width:calc(100% - 12px);
+  height:164px;
+  overflow:visible;
+}
+.line-chart-grid{stroke:#edf0f4;stroke-width:1}
+.line-chart-path{
+  fill:none;
+  stroke:var(--red);
+  stroke-width:3;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  vector-effect:non-scaling-stroke;
+}
+.line-chart-point{
+  fill:#fff;
+  stroke:#f3a1a9;
+  stroke-width:2.5;
+  vector-effect:non-scaling-stroke;
+}
+.line-chart-point.is-current{fill:var(--red);stroke:var(--red)}
+.line-chart-labels{
+  position:absolute;
+  left:5px;
+  right:5px;
+  bottom:6px;
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  align-items:center;
+  text-align:center;
+  gap:0;
+}
+.line-chart-labels span{font-size:10px;color:var(--muted);white-space:nowrap}
+@media(max-width:760px){
+  .chart.line-chart{height:180px}
+  .line-chart-svg{height:134px}
+  .line-chart-labels span{font-size:9px}
+}
+@media(max-width:380px){
+  .chart.line-chart{height:160px}
+  .line-chart-svg{height:114px}
+  .line-chart-labels span{font-size:8px}
+}
