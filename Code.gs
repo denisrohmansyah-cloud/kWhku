@@ -1219,25 +1219,32 @@ function telegramProperties_() {
   };
 }
 
-function telegramSend_(message, parseMode) {
-  const cfg = telegramProperties_();
-  if (!cfg.token || !cfg.chatIds.length) {
-    console.warn('Telegram belum dikonfigurasi: isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS.');
-    return {ok:false,message:'Telegram belum dikonfigurasi.'};
+function telegramSend_(message, parseMode, customerId) {
+  const cfg=telegramProperties_();
+  const destinations=cfg.chatIds.slice();
+  if(customerId){
+    const links=telegramLinkMap_();
+    Object.keys(links).forEach(chatId=>{
+      if(String(links[chatId].customerId)===String(customerId))destinations.push(String(chatId));
+    });
   }
-  const url = 'https://api.telegram.org/bot' + cfg.token + '/sendMessage';
-  const results = cfg.chatIds.map(chatId => {
-    const response = UrlFetchApp.fetch(url, {
-      method:'post',
-      contentType:'application/json',
-      payload:JSON.stringify(Object.assign({chat_id:chatId,text:message,disable_web_page_preview:true}, parseMode ? {parse_mode:parseMode} : {})),
+  const unique=Array.from(new Set(destinations));
+  if(!cfg.token||!unique.length){
+    console.warn('Telegram belum dikonfigurasi: isi TELEGRAM_BOT_TOKEN atau tautkan akun pelanggan.');
+    return{ok:false,message:'Telegram belum dikonfigurasi untuk penerima ini.'};
+  }
+  const url='https://api.telegram.org/bot'+cfg.token+'/sendMessage';
+  const results=unique.map(chatId=>{
+    const response=UrlFetchApp.fetch(url,{
+      method:'post',contentType:'application/json',
+      payload:JSON.stringify(Object.assign({chat_id:chatId,text:message,disable_web_page_preview:true},parseMode?{parse_mode:parseMode}:{})),
       muteHttpExceptions:true
     });
-    const status = response.getResponseCode();
-    if (status < 200 || status >= 300) console.error('Telegram sendMessage gagal:',status,response.getContentText());
-    return {chatId,status};
+    const status=response.getResponseCode();
+    if(status<200||status>=300)console.error('Telegram sendMessage gagal:',status,response.getContentText());
+    return{chatId,status};
   });
-  return {ok:results.every(x=>x.status>=200&&x.status<300),results};
+  return{ok:results.every(x=>x.status>=200&&x.status<300),results};
 }
 
 function evaluateTemperatureTelegramAlert_(reading) {
@@ -1260,7 +1267,7 @@ function evaluateTemperatureTelegramAlert_(reading) {
       'Ambang: ' + telegramDisplayNumber_(threshold,2) + ' °C\n' +
       'Kelembapan: ' + telegramDisplayNumber_(reading.humidityPct,2) +' %\n' +
       'Waktu: ' + time
-    );
+    , null, reading.customerId);
     if (result.ok) cache.put(key,'1',21600);
   } else if (isAlert && wasAlert) {
     // Pengingat berkala maksimal sekali setiap 30 menit selama kondisi tinggi.
@@ -1273,7 +1280,7 @@ function evaluateTemperatureTelegramAlert_(reading) {
         'Suhu: ' + telegramDisplayNumber_(reading.temperatureC,2) + ' °C (ambang ' + telegramDisplayNumber_(threshold,2) + ' °C)\n' +
         'Kelembapan: ' + telegramDisplayNumber_(reading.humidityPct,2) + ' %\n' +
         'Waktu: ' + time
-      );
+      , null, reading.customerId);
       if (result.ok) cache.put(reminderKey,'1',1800);
     }
   } else if (!isAlert && wasAlert && reading.temperatureC <= threshold - 1) {
@@ -1284,7 +1291,7 @@ function evaluateTemperatureTelegramAlert_(reading) {
       'Suhu: ' + telegramDisplayNumber_(reading.temperatureC,2) + ' °C\n' +
       'Ambang peringatan: ' + telegramDisplayNumber_(threshold,2) + ' °C\n' +
       'Waktu: ' + time
-    );
+    , null, reading.customerId);
     if (result.ok) {
       cache.remove(key);
       cache.remove(key + '_reminder');
@@ -1499,6 +1506,17 @@ function handleTelegramUpdate_(update){
  const status=telegramCustomerStatus_(link.customerId);if(!status){telegramReply_(chatId,'Pelanggan tidak aktif atau tidak ditemukan.');return}
  const rr=status.relay||{};
  if(command==='/mode'){telegramReply_(chatId,'Mode relay: '+(rr.mode||'UNKNOWN')+'\nKendali: '+(rr.enabled?'AKTIF':'NONAKTIF')+'\nStatus perangkat: '+(status.fresh?'ONLINE':'STALE/OFFLINE'));return}
+ if(command==='/history'){
+  const rows=getRows_('Data_Listrik').filter(x=>String(x.customerId)===String(link.customerId))
+   .sort((a,b)=>new Date(b.receivedAt||b.timestamp)-new Date(a.receivedAt||a.timestamp)).slice(0,5);
+  if(!rows.length){telegramReply_(chatId,'Belum ada riwayat pengukuran untuk pelanggan ini.');return}
+  const lines=rows.map(x=>{
+   const stamp=new Date(x.receivedAt||x.timestamp);
+   const when=Number.isFinite(stamp.getTime())?Utilities.formatDate(stamp,CONFIG.TIME_ZONE,'dd/MM HH:mm'):'Waktu tidak diketahui';
+   return when+' | '+telegramDisplayNumber_(x.voltageV,2)+' V | '+telegramDisplayNumber_(x.currentA,2)+' A | '+telegramDisplayNumber_(x.powerW,2)+' W | '+telegramDisplayNumber_(x.energyKwh,2)+' kWh';
+  });
+  telegramReply_(chatId,'RIWAYAT 5 PEMBACAAN TERAKHIR\\n'+lines.join('\\n'));return;
+ }
  if(command==='/status'||command==='/relay'){
   const r=status.reading,age=rr.statusAgeSeconds;
   const sensorLine=r?'Tegangan: '+telegramDisplayNumber_(r.voltageV,2)+' V\nArus: '+telegramDisplayNumber_(r.currentA,2)+' A\nDaya: '+telegramDisplayNumber_(r.powerW,2)+' W\nEnergi: '+telegramDisplayNumber_(r.energyKwh,2)+' kWh\nFrekuensi: '+telegramDisplayNumber_(r.frequencyHz,2)+' Hz\nFaktor daya: '+telegramDisplayNumber_(r.powerFactor,2)+'\nSuhu: '+telegramDisplayNumber_(r.temperatureC,2)+' °C\nKelembapan: '+telegramDisplayNumber_(r.humidityPct,2)+' %':'Data sensor tidak tersedia: heartbeat ESP32 lebih dari 15 detik atau belum pernah diterima.';
@@ -1625,7 +1643,7 @@ function checkEsp32OfflineAll(){
     updateDeviceStatus_(id,meter,'OFFLINE',last,'Tidak ada data ESP32 melewati '+CONFIG.MAX_AGE_MINUTES_ONLINE+' menit.');
     const minutes=Math.floor(age/60000),when=Utilities.formatDate(last,CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss');
     const msg='<b>🚨 kWh-KU DEVICE ALERT</b>\n━━━━━━━━━━━━━━━━━━━━\n🔴 <b>STATUS: ESP32 OFFLINE</b>\n\n👤 <b>Pelanggan:</b> '+alarmHtml_(customer.name||id)+'\n🆔 <b>ID:</b> '+alarmHtml_(id)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(meter)+'\n\n⚠️ Tidak ada data diterima selama <b>'+minutes+' menit</b>.\n🕒 <b>Data terakhir:</b> '+when+'\n\n<b>Periksa:</b>\n• Catu daya ESP32\n• Koneksi Wi-Fi dan internet\n• Pengiriman ke Google Apps Script\n━━━━━━━━━━━━━━━━━━━━';
-    const sent=telegramSend_(msg,'HTML');results.push({customerId:id,offline:true,telegram:sent});
+    const sent=telegramSend_(msg,'HTML',id);results.push({customerId:id,offline:true,telegram:sent});
   });
   return {ok:results.every(x=>!x.telegram||x.telegram.ok),results:results};
 }
@@ -1634,7 +1652,7 @@ function sendTelegramDeviceRecovery_(customerId,meterId,receivedAt){
   if(!cfg.alarmEnabled||!cfg.alarmDeviceOfflineEnabled)return {ok:true,skipped:true};
   const customer=getRows_('Pelanggan').find(x=>String(x.customerId)===String(customerId));
   const time=Utilities.formatDate(receivedAt||new Date(),CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss');
-  return telegramSend_('<b>✅ kWh-KU DEVICE RECOVERY</b>\n━━━━━━━━━━━━━━━━━━━━\n🟢 <b>STATUS: ESP32 ONLINE</b>\n\n👤 <b>Pelanggan:</b> '+alarmHtml_(customer&&customer.name||customerId)+'\n🆔 <b>ID:</b> '+alarmHtml_(customerId)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(meterId)+'\n\n📡 Data sensor kembali diterima oleh server.\n🕒 <b>Waktu pemulihan:</b> '+time+'\n━━━━━━━━━━━━━━━━━━━━','HTML');
+  return telegramSend_('<b>✅ kWh-KU DEVICE RECOVERY</b>\n━━━━━━━━━━━━━━━━━━━━\n🟢 <b>STATUS: ESP32 ONLINE</b>\n\n👤 <b>Pelanggan:</b> '+alarmHtml_(customer&&customer.name||customerId)+'\n🆔 <b>ID:</b> '+alarmHtml_(customerId)+'\n📟 <b>Perangkat:</b> '+alarmHtml_(meterId)+'\n\n📡 Data sensor kembali diterima oleh server.\n🕒 <b>Waktu pemulihan:</b> '+time+'\n━━━━━━━━━━━━━━━━━━━━','HTML',customerId);
 }
 
 function sendTelegramSystemMonitorAll(){
@@ -1690,7 +1708,7 @@ function sendTelegramSystemMonitor_(customer){
     '🕒 '+Utilities.formatDate(now,CONFIG.TIME_ZONE,'yyyy-MM-dd | HH:mm:ss'),
     '<i>Estimasi biaya berdasarkan data energi yang tersimpan.</i>'
   ].join('\n');
-  return telegramSend_(msg,'HTML');
+  return telegramSend_(msg,'HTML',customer.customerId);
 }
 
 function evaluateMultiParameterTelegramAlert_(r){
@@ -1747,7 +1765,7 @@ function evaluateMultiParameterTelegramAlert_(r){
       message='⏰ <b>PENGINGAT KONDISI SISTEM</b>\n'+header+'\n\n<b>MASIH ABNORMAL ('+activeLines.length+')</b>\n'+activeLines.join('\n')+'\n\n🕒 <b>Waktu:</b> '+time+'\n🔁 <i>Interval pengingat: '+cfg.reminderIntervalMinutes+' menit</i>';
       state.lastReminderAt=now;
     }
-    if(message){const sent=telegramSend_(message,'HTML');if(!sent.ok)return {ok:false,message:'Pesan alarm gagal dikirim; status alarm tidak diperbarui.',telegram:sent};}
+    if(message){const sent=telegramSend_(message,'HTML',r.customerId);if(!sent.ok)return {ok:false,message:'Pesan alarm gagal dikirim; status alarm tidak diperbarui.',telegram:sent};}
     props.setProperty(stateKey,JSON.stringify(state));
     return {ok:true,sent:!!message,activeCount:activeKeys.length,recoveredCount:recovered.length};
   } finally {lock.releaseLock();}
