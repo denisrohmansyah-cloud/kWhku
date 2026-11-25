@@ -27,7 +27,8 @@ const truncateDisplay=(n,places)=>{
   return (v<0?'-':'')+grouped+(places?','+fraction:'');
 };
 const fmt=n=>raw(n);
-// Format tampilan pengukuran sesuai spesifikasi dengan pemotongan desimal (truncation), bukan pembulatan.\n// Nilai mentah tetap utuh untuk semua perhitungan dan ekspor.
+// Format tampilan pengukuran memakai truncation dua desimal, bukan pembulatan.
+// Nilai mentah tetap utuh untuk perhitungan dan ekspor.
 const fmtEnergy=n=>truncateDisplay(n,2);
 const fmtW=n=>truncateDisplay(n,2);
 const fmtV=n=>truncateDisplay(n,2);
