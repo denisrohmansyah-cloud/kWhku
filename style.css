@@ -372,3 +372,51 @@ input,select,textarea{max-width:100%;min-width:0}
 .relay-history-table{min-width:720px}
 .relay-history-table td{vertical-align:top;white-space:normal;max-width:360px;overflow-wrap:anywhere}
 @media(max-width:640px){.relay-history-toolbar{width:100%}.relay-history-toolbar .field{flex:1}.relay-history-toolbar button{flex:1}}
+\n
+/* Dedicated light-theme relay control page */
+#page-controlRelay .relay-control-page,#page-controlRelay .relay-control-history{padding:24px;border:1px solid #e5ebf3;border-radius:18px;background:#fff;box-shadow:0 8px 26px rgba(24,59,112,.06);margin-bottom:18px;color:#183b70}
+#page-controlRelay .relay-control-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px}
+#page-controlRelay .relay-kicker{font-size:10px;letter-spacing:.14em;font-weight:800;color:#e51c2a}
+#page-controlRelay .relay-control-heading h3{font:750 22px/1.3 "Plus Jakarta Sans",sans-serif;margin:5px 0;color:#183b70}
+#page-controlRelay .relay-control-heading p{font-size:13px;color:#64748b;margin:0}
+#page-controlRelay .relay-control-overview{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:14px;margin-bottom:24px}
+#page-controlRelay .relay-control-stat{min-height:150px;padding:19px;border:1px solid #e5ebf3;border-radius:15px;background:#f8fafc;display:flex;flex-direction:column;align-items:flex-start}
+#page-controlRelay .relay-control-stat small{font-size:11px;letter-spacing:.08em;font-weight:800;color:#64748b}
+#page-controlRelay .relay-control-stat>strong{font:800 30px/1.2 "Plus Jakarta Sans",sans-serif;color:#183b70;margin:13px 0 5px}
+#page-controlRelay #relayPageOutput[data-state="ON"]{color:#16a779}
+#page-controlRelay #relayPageOutput[data-state="OFF"]{color:#e51c2a}
+#page-controlRelay .relay-control-stat>span{font-size:12px;color:#64748b;line-height:1.5}
+#page-controlRelay .relay-mode-switch{display:flex;gap:6px;padding:4px;background:#eef2f7;border:1px solid #e1e7ef;border-radius:999px;margin-top:8px}
+#page-controlRelay .relay-mode-switch button{border:0;border-radius:999px;background:transparent;color:#64748b;padding:8px 17px;font-size:11px;font-weight:800;cursor:pointer}
+#page-controlRelay .relay-mode-switch button.is-active{background:#fff;color:#183b70;box-shadow:0 1px 4px #0f233c20}
+#page-controlRelay .relay-control-section{margin:0 0 18px}
+#page-controlRelay .relay-control-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+#page-controlRelay .relay-control-section-title h4{font:700 17px "Plus Jakarta Sans",sans-serif;color:#183b70;margin:0}
+#page-controlRelay .relay-control-section-title>span{font-size:11px;color:#64748b}
+#page-controlRelay .relay-control-buttons{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#page-controlRelay .relay-control-button{min-height:112px;border-radius:14px;border:1px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;cursor:pointer;transition:.18s}
+#page-controlRelay .relay-control-button b{font:750 21px "Plus Jakarta Sans",sans-serif}
+#page-controlRelay .relay-control-button span{font-size:12px}
+#page-controlRelay .relay-control-button.is-on{background:#eaf8f1;border-color:#c8ecda;color:#159765}
+#page-controlRelay .relay-control-button.is-off{background:#fff0f1;border-color:#f5d1d5;color:#dc3545}
+#page-controlRelay .relay-control-button:disabled{opacity:.45;cursor:not-allowed}
+#page-controlRelay .relay-interlock{padding:17px 19px;border-radius:14px;background:#fff8e9;border:1px solid #f4e3bd;margin:18px 0}
+#page-controlRelay .relay-interlock .relay-control-section-title h4{color:#785719}
+#page-controlRelay .relay-interlock p{font-size:13px;line-height:1.5;color:#806a42;margin:8px 0 14px}
+#page-controlRelay .relay-decision-chip{padding:5px 10px;border-radius:99px;background:#fff0c9;color:#94630c;font-size:10px;font-weight:800}
+#page-controlRelay .relay-interlock-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+#page-controlRelay .relay-interlock-grid>div{display:flex;flex-direction:column;gap:5px;min-width:0}
+#page-controlRelay .relay-interlock-grid small{font-size:10px;color:#8a7650}
+#page-controlRelay .relay-interlock-grid strong{font-size:12px;color:#785719;overflow-wrap:anywhere}
+#page-controlRelay .relay-control-footer{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:16px;border-top:1px solid #e5ebf3}
+#page-controlRelay .relay-control-enable{display:flex;align-items:center;gap:8px;margin-right:auto;font-size:13px;font-weight:700;color:#183b70}
+#page-controlRelay .relay-control-enable input{width:17px;height:17px;accent-color:#16a779}
+#page-controlRelay #relayPageStatus{font-size:12px;color:#64748b}
+#page-controlRelay .relay-control-history .panel-head{padding:0;margin-bottom:15px}
+#page-controlRelay .relay-control-history .panel-head h3{font:750 19px "Plus Jakarta Sans",sans-serif;color:#183b70}
+#page-controlRelay .relay-control-history .panel-head p{font-size:12px;color:#64748b}
+#page-controlRelay .relay-history-table{min-width:650px;background:#fff;color:#183b70}
+#page-controlRelay .relay-history-table th{background:#f7f9fc;color:#64748b;font-size:10px}
+#page-controlRelay .relay-history-table td{font-size:12px;color:#475569}
+@media(max-width:800px){#page-controlRelay .relay-control-overview{grid-template-columns:1fr 1fr}#page-controlRelay .relay-control-stat:first-child{grid-column:1/-1}#page-controlRelay .relay-interlock-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){#page-controlRelay .relay-control-page,#page-controlRelay .relay-control-history{padding:16px}#page-controlRelay .relay-control-overview,#page-controlRelay .relay-control-buttons{grid-template-columns:1fr}#page-controlRelay .relay-control-stat:first-child{grid-column:auto}#page-controlRelay .relay-control-heading{flex-direction:column}#page-controlRelay .relay-control-footer{align-items:stretch;flex-direction:column}#page-controlRelay .relay-control-footer button{width:100%}}
