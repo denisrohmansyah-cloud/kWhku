@@ -374,7 +374,7 @@ input,select,textarea{max-width:100%;min-width:0}
 @media(max-width:640px){.relay-history-toolbar{width:100%}.relay-history-toolbar .field{flex:1}.relay-history-toolbar button{flex:1}}
 \n
 /* Dedicated light-theme relay control page */
-#page-controlRelay .relay-control-page,#page-controlRelay .relay-control-history{padding:24px;border:1px solid #e5ebf3;border-radius:18px;background:#fff;box-shadow:0 8px 26px rgba(24,59,112,.06);margin-bottom:18px;color:#183b70}
+#page-controlRelay .relay-control-page{padding:24px;border:1px solid #e5ebf3;border-radius:18px;background:#fff;box-shadow:0 8px 26px rgba(24,59,112,.06);margin-bottom:18px;color:#183b70}
 #page-controlRelay .relay-control-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px}
 #page-controlRelay .relay-kicker{font-size:10px;letter-spacing:.14em;font-weight:800;color:#e51c2a}
 #page-controlRelay .relay-control-heading h3{font:750 22px/1.3 "Plus Jakarta Sans",sans-serif;margin:5px 0;color:#183b70}
@@ -412,14 +412,8 @@ input,select,textarea{max-width:100%;min-width:0}
 #page-controlRelay .relay-control-enable{display:flex;align-items:center;gap:8px;margin-right:auto;font-size:13px;font-weight:700;color:#183b70}
 #page-controlRelay .relay-control-enable input{width:17px;height:17px;accent-color:#16a779}
 #page-controlRelay #relayPageStatus{font-size:12px;color:#64748b}
-#page-controlRelay .relay-control-history .panel-head{padding:0;margin-bottom:15px}
-#page-controlRelay .relay-control-history .panel-head h3{font:750 19px "Plus Jakarta Sans",sans-serif;color:#183b70}
-#page-controlRelay .relay-control-history .panel-head p{font-size:12px;color:#64748b}
-#page-controlRelay .relay-history-table{min-width:650px;background:#fff;color:#183b70}
-#page-controlRelay .relay-history-table th{background:#f7f9fc;color:#64748b;font-size:10px}
-#page-controlRelay .relay-history-table td{font-size:12px;color:#475569}
 @media(max-width:800px){#page-controlRelay .relay-control-overview{grid-template-columns:1fr 1fr}#page-controlRelay .relay-control-stat:first-child{grid-column:1/-1}#page-controlRelay .relay-interlock-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:560px){#page-controlRelay .relay-control-page,#page-controlRelay .relay-control-history{padding:16px}#page-controlRelay .relay-control-overview,#page-controlRelay .relay-control-buttons{grid-template-columns:1fr}#page-controlRelay .relay-control-stat:first-child{grid-column:auto}#page-controlRelay .relay-control-heading{flex-direction:column}#page-controlRelay .relay-control-footer{align-items:stretch;flex-direction:column}#page-controlRelay .relay-control-footer button{width:100%}}
+@media(max-width:560px){#page-controlRelay .relay-control-page{padding:16px}#page-controlRelay .relay-control-overview,#page-controlRelay .relay-control-buttons{grid-template-columns:1fr}#page-controlRelay .relay-control-stat:first-child{grid-column:auto}#page-controlRelay .relay-control-heading{flex-direction:column}#page-controlRelay .relay-control-footer{align-items:stretch;flex-direction:column}#page-controlRelay .relay-control-footer button{width:100%}}
 
 
 /* Relay page live-status toolbar and admin customer selector */
@@ -434,4 +428,16 @@ input,select,textarea{max-width:100%;min-width:0}
  #page-controlRelay .relay-control-toolbar{width:100%;justify-content:stretch}
  #page-controlRelay .relay-customer-picker{width:100%;min-width:0}
  #page-controlRelay .relay-customer-picker select{width:100%;max-width:none}
+}
+
+
+/* Latest relay events are shown in Technical Monitoring, not on the control page. */
+.monitoring-relay-history-panel .panel-head{align-items:center}
+.monitoring-relay-history-panel .relay-history-state{margin:0 20px 10px}
+.monitoring-relay-history-table{min-width:650px}
+.monitoring-relay-history-table td{vertical-align:top;white-space:normal;max-width:360px;overflow-wrap:anywhere}
+@media(max-width:640px){
+ .monitoring-relay-history-panel .panel-head{align-items:flex-start;flex-direction:column}
+ .monitoring-relay-history-panel .panel-head button{width:100%}
+ .monitoring-relay-history-panel .relay-history-state{margin:0 14px 10px}
 }
