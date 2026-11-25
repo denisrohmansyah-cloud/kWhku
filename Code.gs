@@ -519,6 +519,8 @@ function ensureTemperatureSheet_(spreadsheet) {
     sheet.setFrozenRows(1);
     sheet.getRange(1,1,1,headers.length)
       .setFontWeight('bold').setBackground('#e32636').setFontColor('#ffffff');
+    // Format display columns for the first and subsequent sensor readings.
+    sheet.getRange('D:E').setNumberFormat('0.00');
     return sheet;
   }
   const existingHeaders = sheet.getRange(1,1,1,headers.length).getValues()[0];
